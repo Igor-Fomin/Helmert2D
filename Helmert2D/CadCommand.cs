@@ -35,11 +35,20 @@ namespace Helmert2D
                 // 2. CRITICAL FIX: Use typeof(CadCommand).Assembly instead of GetExecutingAssembly()
                 // This ensures we get the location of THIS dll, not the generic runtime.
                 string? assemblyLoc = typeof(CadCommand).Assembly.Location;
+                string? assemblyPath = null;
+
+                if (!string.IsNullOrEmpty(assemblyLoc))
+                {
+                    assemblyPath = Path.GetDirectoryName(assemblyLoc);
+                }
+                else
+                {
+                    // Fallback for in-memory loading (e.g. DevLoader)
+                    // If Location is empty, we assume we are running from the debug build folder.
+                    assemblyPath = @"D:\Visual Studio Projects\Helmert2D\Helmert2D\bin\x64\Debug\net8.0-windows";
+                }
 
                 // 3. Safety check: If for some reason we can't find our own location, stop.
-                if (string.IsNullOrEmpty(assemblyLoc)) return null;
-
-                string? assemblyPath = Path.GetDirectoryName(assemblyLoc);
                 if (string.IsNullOrEmpty(assemblyPath)) return null;
 
                 // 4. Combine paths
@@ -145,6 +154,7 @@ namespace Helmert2D
 
             var mat = new Matrix3d(matData);
 
+            using (doc.LockDocument())
             using (Transaction tr = doc.TransactionManager.StartTransaction())
             {
                 try

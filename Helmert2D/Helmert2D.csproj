@@ -16,24 +16,24 @@
 		</ProjectReference>
 
 		<Reference Include="AcCoreMgd">
-			<HintPath>C:\Program Files\Autodesk\AutoCAD 2025\AcCoreMgd.dll</HintPath>
+			<HintPath>C:\Program Files\Autodesk\AutoCAD 2026\AcCoreMgd.dll</HintPath>
 			<Private>False</Private>
 		</Reference>
 		<Reference Include="AcDbMgd">
-			<HintPath>C:\Program Files\Autodesk\AutoCAD 2025\AcDbMgd.dll</HintPath>
+			<HintPath>C:\Program Files\Autodesk\AutoCAD 2026\AcDbMgd.dll</HintPath>
 			<Private>False</Private>
 		</Reference>
 		<Reference Include="AcMgd">
-			<HintPath>C:\Program Files\Autodesk\AutoCAD 2025\AcMgd.dll</HintPath>
+			<HintPath>C:\Program Files\Autodesk\AutoCAD 2026\AcMgd.dll</HintPath>
 			<Private>False</Private>
 		</Reference>
 
 		<Reference Include="AecBaseMgd">
-			<HintPath>C:\Program Files\Autodesk\AutoCAD 2025\ACA\AecBaseMgd.dll</HintPath>
+			<HintPath>C:\Program Files\Autodesk\AutoCAD 2026\ACA\AecBaseMgd.dll</HintPath>
 			<Private>False</Private>
 		</Reference>
 		<Reference Include="AeccDbMgd">
-			<HintPath>C:\Program Files\Autodesk\AutoCAD 2025\C3D\AeccDbMgd.dll</HintPath>
+			<HintPath>C:\Program Files\Autodesk\AutoCAD 2026\C3D\AeccDbMgd.dll</HintPath>
 			<Private>False</Private>
 		</Reference>
 	</ItemGroup>
