@@ -24,16 +24,20 @@ namespace Helmert2D
             AppDomain.CurrentDomain.AssemblyResolve -= CurrentDomain_AssemblyResolve;
         }
 
+
         private Assembly? CurrentDomain_AssemblyResolve(object? sender, ResolveEventArgs args)
         {
-            string? assemblyName = new AssemblyName(args.Name).Name;
-            if (string.IsNullOrEmpty(assemblyName)) return null;
+            // Get the name of the missing assembly (e.g., "Helmert2D.Core")
+            string assemblyName = new AssemblyName(args.Name).Name;
 
-            string? assemblyPath = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
-            if (string.IsNullOrEmpty(assemblyPath)) return null;
+            // Get the folder where Helmert2D.dll is currently running from
+            string assemblyPath = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
 
-            // This will now correctly find MathNet.Numerics.dll due to the .csproj change
+            // Combine them to find the missing DLL
             string targetPath = Path.Combine(assemblyPath, assemblyName + ".dll");
+
+            // Debugging: If you have a debugger attached, this helps see what's failing
+            // System.Diagnostics.Debug.WriteLine($"Looking for: {targetPath}");
 
             if (File.Exists(targetPath))
             {
@@ -42,7 +46,6 @@ namespace Helmert2D
 
             return null;
         }
-
         [CommandMethod("Helmert2D")]
         public void RunHelmertTool()
         {
