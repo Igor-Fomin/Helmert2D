@@ -25,7 +25,7 @@ namespace Helmert2D.Core
         public double RotationRad { get; set; }
         public double RotationDeg => RotationRad * (180.0 / Math.PI);
         public double Rmse { get; set; }
-        
+
         // Parameters a and b where a = s*cos(alpha), b = s*sin(alpha)
         public double A { get; set; }
         public double B { get; set; }
@@ -33,18 +33,11 @@ namespace Helmert2D.Core
 
     public static class HelmertSolver
     {
-        /// <summary>
-        /// Solves for Helmert Transformation parameters.
-        /// </summary>
-        /// <param name="sourcePoints">List of points in the source system.</param>
-        /// <param name="targetPoints">List of points in the target system (must match count of source).</param>
-        /// <param name="computeScale">If true, solves for 4 parameters (Tx, Ty, Rot, Scale). If false, fixes Scale = 1 (Rigid Body).</param>
-        /// <returns>Transformation parameters.</returns>
         public static HelmertResult Solve(List<Point2D> sourcePoints, List<Point2D> targetPoints, bool computeScale = true)
         {
             if (sourcePoints == null || targetPoints == null)
                 throw new ArgumentNullException("Points lists cannot be null.");
-            
+
             if (sourcePoints.Count != targetPoints.Count)
                 throw new ArgumentException("Source and Target point counts must match.");
 
@@ -69,9 +62,6 @@ namespace Helmert2D.Core
                     double tx = targetPoints[i].X;
                     double ty = targetPoints[i].Y;
 
-                    // Equation 1: Tx + a*x - b*y = X_t
-                    // Matrix col order: [a, b, Tx, Ty]
-                    
                     // Row 2*i (X equation)
                     aData[2 * i, 0] = sx;     // a * x
                     aData[2 * i, 1] = -sy;    // - b * y
@@ -120,16 +110,11 @@ namespace Helmert2D.Core
             else
             {
                 // Fixed Scale = 1.0 (Rigid Body Transformation)
-                // Algorithm based on singular value decomposition or simple centroid subtraction + rotation
-                // Since we are 2D, we can use the simple formula for rotation.
-                
-                // 1. Calculate Centroids
                 double meanSx = sourcePoints.Average(p => p.X);
                 double meanSy = sourcePoints.Average(p => p.Y);
                 double meanTx = targetPoints.Average(p => p.X);
                 double meanTy = targetPoints.Average(p => p.Y);
 
-                // 2. Center the points
                 double num = 0.0;
                 double den = 0.0;
 
@@ -140,28 +125,19 @@ namespace Helmert2D.Core
                     double tx = targetPoints[i].X - meanTx;
                     double ty = targetPoints[i].Y - meanTy;
 
-                    // We want to minimize sum || (R * S_i) - T_i ||^2
-                    // R = [cos -sin; sin cos]
-                    // This leads to finding theta that maximizes: cos(theta)*sum(sx*tx + sy*ty) + sin(theta)*sum(sx*ty - sy*tx)
-                    // So tan(theta) = sum(sx*ty - sy*tx) / sum(sx*tx + sy*ty)
-                    
                     num += (sx * ty - sy * tx);
                     den += (sx * tx + sy * ty);
                 }
 
                 double rotation = Math.Atan2(num, den);
-                double a = Math.Cos(rotation); // Scale is 1, so a = cos
-                double b = Math.Sin(rotation); // Scale is 1, so b = sin
+                double a = Math.Cos(rotation);
+                double b = Math.Sin(rotation);
 
-                // 3. Recover Translation
-                // Tx = meanTx - (a*meanSx - b*meanSy)
-                // Ty = meanTy - (b*meanSx + a*meanSy)
                 double transX = meanTx - (a * meanSx - b * meanSy);
                 double transY = meanTy - (b * meanSx + a * meanSy);
 
-                // 4. Calculate RMSE
                 double sumSqRes = 0;
-                for(int i=0; i<n; i++)
+                for (int i = 0; i < n; i++)
                 {
                     double sx = sourcePoints[i].X;
                     double sy = sourcePoints[i].Y;

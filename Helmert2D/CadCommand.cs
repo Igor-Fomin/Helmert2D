@@ -32,6 +32,7 @@ namespace Helmert2D
             string? assemblyPath = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
             if (string.IsNullOrEmpty(assemblyPath)) return null;
 
+            // This will now correctly find MathNet.Numerics.dll due to the .csproj change
             string targetPath = Path.Combine(assemblyPath, assemblyName + ".dll");
 
             if (File.Exists(targetPath))
@@ -48,11 +49,14 @@ namespace Helmert2D
             try
             {
                 HelmertView view = new HelmertView();
-                
+
+                // Wire up events
                 view.PickPointsRequested += () => PickPoints(view);
                 view.ApplyTransformationRequested += (result) => ApplyTransformation(result);
 
-                Autodesk.AutoCAD.ApplicationServices.Application.ShowModalWindow(view); 
+                // Open as Modal. 
+                // Note: When we "Hide" inside PickPoints, we must "Show" to bring it back, not "ShowDialog".
+                Autodesk.AutoCAD.ApplicationServices.Application.ShowModalWindow(view);
             }
             catch (System.Exception ex)
             {
@@ -62,10 +66,12 @@ namespace Helmert2D
 
         private void PickPoints(HelmertView view)
         {
+            // Hide the window so we can interact with the drawing
             view.Hide();
+
             var doc = Autodesk.AutoCAD.ApplicationServices.Application.DocumentManager.MdiActiveDocument;
             var ed = doc.Editor;
-            
+
             var pickedPoints = new List<PointPairViewModel>();
 
             try
@@ -96,15 +102,17 @@ namespace Helmert2D
                         TargetX = pPtResTarget.Value.X,
                         TargetY = pPtResTarget.Value.Y
                     });
-                    
-                    // Draw a temporary vector to visualize the pair (optional, but nice)
+
+                    // Draw a temporary vector to visualize the pair
                     ed.DrawVector(pPtResSource.Value, pPtResTarget.Value, 1, false);
                 }
             }
             finally
             {
                 view.UpdatePoints(pickedPoints);
-                view.ShowDialog();
+
+                // FIXED: Use Show() because the window is already initialized as modal
+                view.Show();
             }
         }
 
@@ -127,7 +135,7 @@ namespace Helmert2D
             // [ B   A   0  Ty ]
             // [ 0   0   1   0 ]
             // [ 0   0   0   1 ]
-            
+
             double[] matData = new double[] {
                 result.A, -result.B, 0, result.TranslationX,
                 result.B,  result.A, 0, result.TranslationY,
