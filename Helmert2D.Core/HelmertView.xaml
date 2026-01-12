@@ -71,10 +71,12 @@
         <GroupBox Grid.Row="1" Header="Control Points (Source -> Target)">
             <DataGrid x:Name="PointsGrid" Margin="5">
                 <DataGrid.Columns>
-                    <DataGridTextColumn Header="Source X" Binding="{Binding SourceX}" Width="*"/>
-                    <DataGridTextColumn Header="Source Y" Binding="{Binding SourceY}" Width="*"/>
-                    <DataGridTextColumn Header="Target X" Binding="{Binding TargetX}" Width="*"/>
-                    <DataGridTextColumn Header="Target Y" Binding="{Binding TargetY}" Width="*"/>
+                    <DataGridTextColumn Header="Source X" Binding="{Binding SourceX, StringFormat=F3}" Width="*"/>
+                    <DataGridTextColumn Header="Source Y" Binding="{Binding SourceY, StringFormat=F3}" Width="*"/>
+                    <DataGridTextColumn Header="Target X" Binding="{Binding TargetX, StringFormat=F3}" Width="*"/>
+                    <DataGridTextColumn Header="Target Y" Binding="{Binding TargetY, StringFormat=F3}" Width="*"/>
+                    <DataGridTextColumn Header="Resid X" Binding="{Binding ResidualX, StringFormat=F3}" Width="80" IsReadOnly="True" Foreground="#FF8888"/>
+                    <DataGridTextColumn Header="Resid Y" Binding="{Binding ResidualY, StringFormat=F3}" Width="80" IsReadOnly="True" Foreground="#FF8888"/>
                 </DataGrid.Columns>
             </DataGrid>
         </GroupBox>
@@ -113,7 +115,8 @@
 
         <StackPanel Grid.Row="3" Margin="0,15,0,0">
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Left" Margin="0,0,0,10">
-                <CheckBox x:Name="ChkComputeScale" Content="Calculate Scale (Best Fit)" IsChecked="True" Foreground="White" VerticalAlignment="Center"/>
+                <CheckBox x:Name="ChkComputeScale" Content="Calculate Scale (Best Fit)" IsChecked="True" Foreground="White" VerticalAlignment="Center" Margin="0,0,20,0"/>
+                <CheckBox x:Name="ChkTransformCopy" Content="Transform Copy (Keep Original)" IsChecked="False" Foreground="White" VerticalAlignment="Center"/>
             </StackPanel>
 
             <Grid>

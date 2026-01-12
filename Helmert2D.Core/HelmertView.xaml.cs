@@ -13,7 +13,7 @@ namespace Helmert2D.Core
         public ObservableCollection<PointPairViewModel> Points { get; set; }
 
         public event Action? PickPointsRequested;
-        public event Action<HelmertResult>? ApplyTransformationRequested;
+        public event Action<HelmertResult, bool>? ApplyTransformationRequested;
 
         private HelmertResult? _lastResult;
 
@@ -65,6 +65,16 @@ namespace Helmert2D.Core
                 TxtScale.Text = _lastResult.Scale.ToString("F6");
                 TxtRMSE.Text = _lastResult.Rmse.ToString("F6");
 
+                // Calculate and update residuals for each point
+                foreach (var point in validPoints)
+                {
+                    double predX = _lastResult.TranslationX + _lastResult.A * point.SourceX - _lastResult.B * point.SourceY;
+                    double predY = _lastResult.TranslationY + _lastResult.B * point.SourceX + _lastResult.A * point.SourceY;
+
+                    point.ResidualX = predX - point.TargetX;
+                    point.ResidualY = predY - point.TargetY;
+                }
+
                 BtnApply.IsEnabled = true;
             }
             catch (Exception ex)
@@ -78,7 +88,8 @@ namespace Helmert2D.Core
         {
             if (_lastResult != null)
             {
-                ApplyTransformationRequested?.Invoke(_lastResult);
+                bool transformCopy = ChkTransformCopy.IsChecked ?? false;
+                ApplyTransformationRequested?.Invoke(_lastResult, transformCopy);
             }
         }
 
@@ -94,6 +105,8 @@ namespace Helmert2D.Core
         private double _sourceY;
         private double _targetX;
         private double _targetY;
+        private double? _residualX;
+        private double? _residualY;
 
         public double SourceX
         {
@@ -114,6 +127,17 @@ namespace Helmert2D.Core
         {
             get => _targetY;
             set { _targetY = value; OnPropertyChanged(); }
+        }
+
+        public double? ResidualX
+        {
+            get => _residualX;
+            set { _residualX = value; OnPropertyChanged(); }
+        }
+        public double? ResidualY
+        {
+            get => _residualY;
+            set { _residualY = value; OnPropertyChanged(); }
         }
 
         public event PropertyChangedEventHandler? PropertyChanged;

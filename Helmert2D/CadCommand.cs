@@ -76,7 +76,7 @@ namespace Helmert2D
                 HelmertView view = new HelmertView();
 
                 view.PickPointsRequested += () => PickPoints(view);
-                view.ApplyTransformationRequested += (result) => ApplyTransformation(result);
+                view.ApplyTransformationRequested += (result, transformCopy) => ApplyTransformation(result, transformCopy);
 
                 Autodesk.AutoCAD.ApplicationServices.Application.ShowModalWindow(view);
             }
@@ -132,7 +132,7 @@ namespace Helmert2D
             }
         }
 
-        private void ApplyTransformation(HelmertResult result)
+        private void ApplyTransformation(HelmertResult result, bool transformCopy)
         {
             var doc = Autodesk.AutoCAD.ApplicationServices.Application.DocumentManager.MdiActiveDocument;
             var ed = doc.Editor;
@@ -159,17 +159,37 @@ namespace Helmert2D
             {
                 try
                 {
+                    BlockTableRecord? btr = null;
+                    if (transformCopy)
+                    {
+                        BlockTable bt = (BlockTable)tr.GetObject(db.BlockTableId, OpenMode.ForRead);
+                        btr = (BlockTableRecord)tr.GetObject(db.CurrentSpaceId, OpenMode.ForWrite);
+                    }
+
+                    int count = 0;
                     foreach (SelectedObject so in pSelRes.Value)
                     {
-                        Entity? ent = tr.GetObject(so.ObjectId, OpenMode.ForWrite) as Entity;
+                        Entity? ent = tr.GetObject(so.ObjectId, OpenMode.ForRead) as Entity;
                         if (ent != null)
                         {
-                            ent.TransformBy(mat);
+                            if (transformCopy && btr != null)
+                            {
+                                Entity clone = (Entity)ent.Clone();
+                                btr.AppendEntity(clone);
+                                tr.AddNewlyCreatedDBObject(clone, true);
+                                clone.TransformBy(mat);
+                            }
+                            else
+                            {
+                                ent.UpgradeOpen();
+                                ent.TransformBy(mat);
+                            }
+                            count++;
                         }
                     }
                     tr.Commit();
                     ed.Regen();
-                    ed.WriteMessage($"\nSuccessfully transformed {pSelRes.Value.Count} objects.\n");
+                    ed.WriteMessage($"\nSuccessfully transformed {count} objects" + (transformCopy ? " (Copies created)." : ".") + "\n");
                 }
                 catch (System.Exception ex)
                 {
