@@ -24,28 +24,41 @@ namespace Helmert2D
             AppDomain.CurrentDomain.AssemblyResolve -= CurrentDomain_AssemblyResolve;
         }
 
-
         private Assembly? CurrentDomain_AssemblyResolve(object? sender, ResolveEventArgs args)
         {
-            // Get the name of the missing assembly (e.g., "Helmert2D.Core")
-            string assemblyName = new AssemblyName(args.Name).Name;
-
-            // Get the folder where Helmert2D.dll is currently running from
-            string assemblyPath = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
-
-            // Combine them to find the missing DLL
-            string targetPath = Path.Combine(assemblyPath, assemblyName + ".dll");
-
-            // Debugging: If you have a debugger attached, this helps see what's failing
-            // System.Diagnostics.Debug.WriteLine($"Looking for: {targetPath}");
-
-            if (File.Exists(targetPath))
+            try
             {
-                return Assembly.LoadFrom(targetPath);
+                // 1. Robustly get the assembly name we are looking for
+                var assemblyName = new AssemblyName(args.Name).Name;
+                if (string.IsNullOrEmpty(assemblyName)) return null;
+
+                // 2. CRITICAL FIX: Use typeof(CadCommand).Assembly instead of GetExecutingAssembly()
+                // This ensures we get the location of THIS dll, not the generic runtime.
+                string? assemblyLoc = typeof(CadCommand).Assembly.Location;
+
+                // 3. Safety check: If for some reason we can't find our own location, stop.
+                if (string.IsNullOrEmpty(assemblyLoc)) return null;
+
+                string? assemblyPath = Path.GetDirectoryName(assemblyLoc);
+                if (string.IsNullOrEmpty(assemblyPath)) return null;
+
+                // 4. Combine paths
+                string targetPath = Path.Combine(assemblyPath, assemblyName + ".dll");
+
+                if (File.Exists(targetPath))
+                {
+                    return Assembly.LoadFrom(targetPath);
+                }
+            }
+            catch
+            {
+                // Never throw an exception inside an AssemblyResolver, it crashes the app.
+                return null;
             }
 
             return null;
         }
+
         [CommandMethod("Helmert2D")]
         public void RunHelmertTool()
         {
@@ -53,23 +66,19 @@ namespace Helmert2D
             {
                 HelmertView view = new HelmertView();
 
-                // Wire up events
                 view.PickPointsRequested += () => PickPoints(view);
                 view.ApplyTransformationRequested += (result) => ApplyTransformation(result);
 
-                // Open as Modal. 
-                // Note: When we "Hide" inside PickPoints, we must "Show" to bring it back, not "ShowDialog".
                 Autodesk.AutoCAD.ApplicationServices.Application.ShowModalWindow(view);
             }
             catch (System.Exception ex)
             {
-                MessageBox.Show(ex.Message);
+                MessageBox.Show($"Error launching tool: {ex.Message}\n\n{ex.StackTrace}");
             }
         }
 
         private void PickPoints(HelmertView view)
         {
-            // Hide the window so we can interact with the drawing
             view.Hide();
 
             var doc = Autodesk.AutoCAD.ApplicationServices.Application.DocumentManager.MdiActiveDocument;
@@ -81,7 +90,6 @@ namespace Helmert2D
             {
                 while (true)
                 {
-                    // Pick Source
                     var pPtOptsSource = new PromptPointOptions("\nPick Source Point (or ESC to finish): ");
                     pPtOptsSource.AllowNone = true;
                     var pPtResSource = ed.GetPoint(pPtOptsSource);
@@ -89,7 +97,6 @@ namespace Helmert2D
                     if (pPtResSource.Status == PromptStatus.Cancel || pPtResSource.Status == PromptStatus.None)
                         break;
 
-                    // Pick Target
                     var pPtOptsTarget = new PromptPointOptions("\nPick Target Point: ");
                     pPtOptsTarget.UseBasePoint = true;
                     pPtOptsTarget.BasePoint = pPtResSource.Value;
@@ -106,15 +113,12 @@ namespace Helmert2D
                         TargetY = pPtResTarget.Value.Y
                     });
 
-                    // Draw a temporary vector to visualize the pair
                     ed.DrawVector(pPtResSource.Value, pPtResTarget.Value, 1, false);
                 }
             }
             finally
             {
                 view.UpdatePoints(pickedPoints);
-
-                // FIXED: Use Show() because the window is already initialized as modal
                 view.Show();
             }
         }
@@ -125,19 +129,12 @@ namespace Helmert2D
             var ed = doc.Editor;
             var db = doc.Database;
 
-            // Prompt for selection
             var pSelOpts = new PromptSelectionOptions();
             pSelOpts.MessageForAdding = "\nSelect objects to transform: ";
             var pSelRes = ed.GetSelection(pSelOpts);
 
             if (pSelRes.Status != PromptStatus.OK)
                 return;
-
-            // Construct Transformation Matrix
-            // [ A  -B   0  Tx ]
-            // [ B   A   0  Ty ]
-            // [ 0   0   1   0 ]
-            // [ 0   0   0   1 ]
 
             double[] matData = new double[] {
                 result.A, -result.B, 0, result.TranslationX,
