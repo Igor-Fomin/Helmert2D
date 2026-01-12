@@ -3,7 +3,7 @@ using System.Collections.ObjectModel;
 using System.Linq;
 using System.Windows;
 
-namespace Helmert2D
+namespace Helmert2D.Core
 {
     public partial class HelmertView : Window
     {

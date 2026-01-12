@@ -4,6 +4,7 @@ using System.Reflection;
 using System.Windows;
 using Autodesk.AutoCAD.Runtime;
 using Autodesk.AutoCAD.ApplicationServices;
+using Helmert2D.Core;
 
 namespace Helmert2D
 {

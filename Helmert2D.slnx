@@ -6,4 +6,5 @@
   <Project Path="Helmert2D/Helmert2D.csproj">
     <Platform Solution="*|x64" Project="x64" />
   </Project>
+  <Project Path="Helmert2D.Core/Helmert2D.Core.csproj" />
 </Solution>

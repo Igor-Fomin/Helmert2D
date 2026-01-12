@@ -3,7 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 
-namespace Helmert2D
+namespace Helmert2D.Core
 {
     public class Point2D
     {

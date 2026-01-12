@@ -9,7 +9,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="MathNet.Numerics" Version="5.0.0" />
+    <ProjectReference Include="..\Helmert2D.Core\Helmert2D.Core.csproj" />
     
     <!-- AutoCAD 2025 References -->
     <Reference Include="AcCoreMgd">
