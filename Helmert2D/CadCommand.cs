@@ -26,8 +26,12 @@ namespace Helmert2D
 
         private Assembly? CurrentDomain_AssemblyResolve(object? sender, ResolveEventArgs args)
         {
-            string assemblyName = new AssemblyName(args.Name).Name;
-            string assemblyPath = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
+            string? assemblyName = new AssemblyName(args.Name).Name;
+            if (string.IsNullOrEmpty(assemblyName)) return null;
+
+            string? assemblyPath = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
+            if (string.IsNullOrEmpty(assemblyPath)) return null;
+
             string targetPath = Path.Combine(assemblyPath, assemblyName + ".dll");
 
             if (File.Exists(targetPath))
