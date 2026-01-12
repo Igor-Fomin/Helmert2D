@@ -34,12 +34,13 @@ namespace Helmert2D.Core
     public static class HelmertSolver
     {
         /// <summary>
-        /// Solves for 4-parameter Helmert Transformation (Translation X, Translation Y, Rotation, Scale).
+        /// Solves for Helmert Transformation parameters.
         /// </summary>
         /// <param name="sourcePoints">List of points in the source system.</param>
         /// <param name="targetPoints">List of points in the target system (must match count of source).</param>
+        /// <param name="computeScale">If true, solves for 4 parameters (Tx, Ty, Rot, Scale). If false, fixes Scale = 1 (Rigid Body).</param>
         /// <returns>Transformation parameters.</returns>
-        public static HelmertResult Solve(List<Point2D> sourcePoints, List<Point2D> targetPoints)
+        public static HelmertResult Solve(List<Point2D> sourcePoints, List<Point2D> targetPoints, bool computeScale = true)
         {
             if (sourcePoints == null || targetPoints == null)
                 throw new ArgumentNullException("Points lists cannot be null.");
@@ -51,76 +52,141 @@ namespace Helmert2D.Core
                 throw new ArgumentException("At least 2 common points are required for a unique solution.");
 
             int n = sourcePoints.Count;
-            var M = Matrix<double>.Build;
-            var V = Vector<double>.Build;
 
-            // Design Matrix A: (2n x 4)
-            // [ x  -y   1   0 ]
-            // [ y   x   0   1 ]
-            double[,] aData = new double[2 * n, 4];
-            double[] lData = new double[2 * n];
-
-            for (int i = 0; i < n; i++)
+            if (computeScale)
             {
-                double sx = sourcePoints[i].X;
-                double sy = sourcePoints[i].Y;
-                double tx = targetPoints[i].X;
-                double ty = targetPoints[i].Y;
+                var M = Matrix<double>.Build;
+                var V = Vector<double>.Build;
 
-                // First equation for X
-                aData[2 * i, 0] = sx;     // a * x
-                aData[2 * i, 1] = -sy;    // - b * y
-                aData[2 * i, 2] = 1.0;    // Tx
-                aData[2 * i, 3] = 0.0;    // 0
+                // Design Matrix A: (2n x 4)
+                double[,] aData = new double[2 * n, 4];
+                double[] lData = new double[2 * n];
 
-                lData[2 * i] = tx;
+                for (int i = 0; i < n; i++)
+                {
+                    double sx = sourcePoints[i].X;
+                    double sy = sourcePoints[i].Y;
+                    double tx = targetPoints[i].X;
+                    double ty = targetPoints[i].Y;
 
-                // Second equation for Y
-                aData[2 * i + 1, 0] = sy; // b * x (Note: coefficient of 'a' is y, coefficient of 'b' is x? Wait.
-                                          // Y = Ty + b*x + a*y
-                                          // Y = a*y + b*x + Ty
-                                          // Matrix order is [a, b, Tx, Ty]
-                                          // Coeff of a is y. Coeff of b is x.
-                                          
-                aData[2 * i + 1, 0] = sy; // a * y
-                aData[2 * i + 1, 1] = sx; // b * x
-                aData[2 * i + 1, 2] = 0.0;
-                aData[2 * i + 1, 3] = 1.0; // Ty
+                    // Equation 1: Tx + a*x - b*y = X_t
+                    // Matrix col order: [a, b, Tx, Ty]
+                    
+                    // Row 2*i (X equation)
+                    aData[2 * i, 0] = sx;     // a * x
+                    aData[2 * i, 1] = -sy;    // - b * y
+                    aData[2 * i, 2] = 1.0;    // Tx
+                    aData[2 * i, 3] = 0.0;    // 0
+                    lData[2 * i] = tx;
 
-                lData[2 * i + 1] = ty;
+                    // Row 2*i+1 (Y equation)
+                    aData[2 * i + 1, 0] = sy; // a * y
+                    aData[2 * i + 1, 1] = sx; // b * x
+                    aData[2 * i + 1, 2] = 0.0;
+                    aData[2 * i + 1, 3] = 1.0; // Ty
+                    lData[2 * i + 1] = ty;
+                }
+
+                var A = M.DenseOfArray(aData);
+                var L = V.Dense(lData);
+
+                var x = A.Solve(L);
+
+                double a = x[0];
+                double b = x[1];
+                double transX = x[2];
+                double transY = x[3];
+
+                double scale = Math.Sqrt(a * a + b * b);
+                double rotation = Math.Atan2(b, a);
+
+                // Calculate Residuals and RMSE
+                var predicted = A * x;
+                var residuals = predicted - L;
+                double mse = residuals.DotProduct(residuals) / (2 * n);
+                double rmse = Math.Sqrt(mse);
+
+                return new HelmertResult
+                {
+                    TranslationX = transX,
+                    TranslationY = transY,
+                    Scale = scale,
+                    RotationRad = rotation,
+                    A = a,
+                    B = b,
+                    Rmse = rmse
+                };
             }
-
-            var A = M.DenseOfArray(aData);
-            var L = V.Dense(lData);
-
-            // Solve normal equations: (A'A)^-1 A'L
-            // Or use QR decomposition which is numerically more stable
-            var x = A.Solve(L);
-
-            double a = x[0];
-            double b = x[1];
-            double transX = x[2];
-            double transY = x[3];
-
-            double scale = Math.Sqrt(a * a + b * b);
-            double rotation = Math.Atan2(b, a);
-
-            // Calculate Residuals and RMSE
-            var predicted = A * x;
-            var residuals = predicted - L;
-            double mse = residuals.DotProduct(residuals) / (2 * n); // Mean Squared Error
-            double rmse = Math.Sqrt(mse);
-
-            return new HelmertResult
+            else
             {
-                TranslationX = transX,
-                TranslationY = transY,
-                Scale = scale,
-                RotationRad = rotation,
-                A = a,
-                B = b,
-                Rmse = rmse
-            };
+                // Fixed Scale = 1.0 (Rigid Body Transformation)
+                // Algorithm based on singular value decomposition or simple centroid subtraction + rotation
+                // Since we are 2D, we can use the simple formula for rotation.
+                
+                // 1. Calculate Centroids
+                double meanSx = sourcePoints.Average(p => p.X);
+                double meanSy = sourcePoints.Average(p => p.Y);
+                double meanTx = targetPoints.Average(p => p.X);
+                double meanTy = targetPoints.Average(p => p.Y);
+
+                // 2. Center the points
+                double num = 0.0;
+                double den = 0.0;
+
+                for (int i = 0; i < n; i++)
+                {
+                    double sx = sourcePoints[i].X - meanSx;
+                    double sy = sourcePoints[i].Y - meanSy;
+                    double tx = targetPoints[i].X - meanTx;
+                    double ty = targetPoints[i].Y - meanTy;
+
+                    // We want to minimize sum || (R * S_i) - T_i ||^2
+                    // R = [cos -sin; sin cos]
+                    // This leads to finding theta that maximizes: cos(theta)*sum(sx*tx + sy*ty) + sin(theta)*sum(sx*ty - sy*tx)
+                    // So tan(theta) = sum(sx*ty - sy*tx) / sum(sx*tx + sy*ty)
+                    
+                    num += (sx * ty - sy * tx);
+                    den += (sx * tx + sy * ty);
+                }
+
+                double rotation = Math.Atan2(num, den);
+                double a = Math.Cos(rotation); // Scale is 1, so a = cos
+                double b = Math.Sin(rotation); // Scale is 1, so b = sin
+
+                // 3. Recover Translation
+                // Tx = meanTx - (a*meanSx - b*meanSy)
+                // Ty = meanTy - (b*meanSx + a*meanSy)
+                double transX = meanTx - (a * meanSx - b * meanSy);
+                double transY = meanTy - (b * meanSx + a * meanSy);
+
+                // 4. Calculate RMSE
+                double sumSqRes = 0;
+                for(int i=0; i<n; i++)
+                {
+                    double sx = sourcePoints[i].X;
+                    double sy = sourcePoints[i].Y;
+                    double tx = targetPoints[i].X;
+                    double ty = targetPoints[i].Y;
+
+                    double predX = transX + a * sx - b * sy;
+                    double predY = transY + b * sx + a * sy;
+
+                    double dx = predX - tx;
+                    double dy = predY - ty;
+                    sumSqRes += (dx * dx + dy * dy);
+                }
+
+                return new HelmertResult
+                {
+                    TranslationX = transX,
+                    TranslationY = transY,
+                    Scale = 1.0,
+                    RotationRad = rotation,
+                    A = a,
+                    B = b,
+                    Rmse = Math.Sqrt(sumSqRes / (2 * n))
+                };
+            }
         }
     }
 }

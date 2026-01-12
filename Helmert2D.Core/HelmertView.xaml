@@ -115,9 +115,24 @@
         </GroupBox>
 
         <!-- Actions -->
-        <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,15,0,0">
-            <Button x:Name="BtnCalculate" Content="CALCULATE" Width="100" Click="BtnCalculate_Click"/>
-            <Button x:Name="BtnClose" Content="CLOSE" Width="80" Margin="10,0,0,0" Background="#3E3E42" Click="BtnClose_Click"/>
+        <StackPanel Grid.Row="3" Margin="0,15,0,0">
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Left" Margin="0,0,0,10">
+                <CheckBox x:Name="ChkComputeScale" Content="Calculate Scale (Best Fit)" IsChecked="True" Foreground="White" VerticalAlignment="Center"/>
+            </StackPanel>
+
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                
+                <Button x:Name="BtnPick" Content="PICK POINTS" Grid.Column="0" Margin="0,0,5,0" Click="BtnPick_Click" Background="#CA5100"/>
+                <Button x:Name="BtnCalculate" Content="CALCULATE" Grid.Column="1" Margin="5,0,5,0" Click="BtnCalculate_Click"/>
+                <Button x:Name="BtnApply" Content="APPLY TO DRAWING" Grid.Column="2" Margin="5,0,5,0" Click="BtnApply_Click" IsEnabled="False" Background="#2E7D32"/>
+                <Button x:Name="BtnClose" Content="CLOSE" Grid.Column="3" Margin="5,0,0,0" Background="#3E3E42" Click="BtnClose_Click"/>
+            </Grid>
         </StackPanel>
     </Grid>
 </Window>

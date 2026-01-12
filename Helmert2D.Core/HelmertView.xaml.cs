@@ -8,17 +8,31 @@ namespace Helmert2D.Core
     public partial class HelmertView : Window
     {
         public ObservableCollection<PointPairViewModel> Points { get; set; }
+        
+        public event Action? PickPointsRequested;
+        public event Action<HelmertResult>? ApplyTransformationRequested;
+
+        private HelmertResult? _lastResult;
 
         public HelmertView()
         {
             InitializeComponent();
-            Points = new ObservableCollection<PointPairViewModel>
-            {
-                new PointPairViewModel { SourceX = 0, SourceY = 0, TargetX = 10, TargetY = 10 },
-                new PointPairViewModel { SourceX = 100, SourceY = 0, TargetX = 110, TargetY = 10 },
-                new PointPairViewModel { SourceX = 0, SourceY = 100, TargetX = 10, TargetY = 110 }
-            };
+            Points = new ObservableCollection<PointPairViewModel>();
             PointsGrid.ItemsSource = Points;
+        }
+
+        public void UpdatePoints(IEnumerable<PointPairViewModel> newPoints)
+        {
+            Points.Clear();
+            foreach (var p in newPoints)
+            {
+                Points.Add(p);
+            }
+        }
+
+        private void BtnPick_Click(object sender, RoutedEventArgs e)
+        {
+            PickPointsRequested?.Invoke();
         }
 
         private void BtnCalculate_Click(object sender, RoutedEventArgs e)
@@ -31,17 +45,29 @@ namespace Helmert2D.Core
                 var source = validPoints.Select(p => new Point2D(p.SourceX, p.SourceY)).ToList();
                 var target = validPoints.Select(p => new Point2D(p.TargetX, p.TargetY)).ToList();
 
-                var result = HelmertSolver.Solve(source, target);
+                bool computeScale = ChkComputeScale.IsChecked ?? true;
+                _lastResult = HelmertSolver.Solve(source, target, computeScale);
 
-                TxtTransX.Text = result.TranslationX.ToString("F4");
-                TxtTransY.Text = result.TranslationY.ToString("F4");
-                TxtRotation.Text = result.RotationDeg.ToString("F6");
-                TxtScale.Text = result.Scale.ToString("F6");
-                TxtRMSE.Text = result.Rmse.ToString("F6");
+                TxtTransX.Text = _lastResult.TranslationX.ToString("F4");
+                TxtTransY.Text = _lastResult.TranslationY.ToString("F4");
+                TxtRotation.Text = _lastResult.RotationDeg.ToString("F6");
+                TxtScale.Text = _lastResult.Scale.ToString("F6");
+                TxtRMSE.Text = _lastResult.Rmse.ToString("F6");
+
+                BtnApply.IsEnabled = true;
             }
             catch (Exception ex)
             {
                 MessageBox.Show($"Error: {ex.Message}", "Calculation Failed", MessageBoxButton.OK, MessageBoxImage.Error);
+                BtnApply.IsEnabled = false;
+            }
+        }
+
+        private void BtnApply_Click(object sender, RoutedEventArgs e)
+        {
+            if (_lastResult != null)
+            {
+                ApplyTransformationRequested?.Invoke(_lastResult);
             }
         }
 
