@@ -47,14 +47,16 @@ namespace Helmert2D.Core
                     .Where(p => Math.Abs(p.SourceX) > 0.000001 || Math.Abs(p.SourceY) > 0.000001)
                     .ToList();
 
-                if (validPoints.Count < 2)
+                var activePoints = validPoints.Where(p => p.IsActive).ToList();
+
+                if (activePoints.Count < 2)
                 {
-                    MessageBox.Show("Please define at least 2 control points.", "Insufficient Data", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    MessageBox.Show("Please define and activate at least 2 control points.", "Insufficient Data", MessageBoxButton.OK, MessageBoxImage.Warning);
                     return;
                 }
 
-                var source = validPoints.Select(p => new Point2D(p.SourceX, p.SourceY)).ToList();
-                var target = validPoints.Select(p => new Point2D(p.TargetX, p.TargetY)).ToList();
+                var source = activePoints.Select(p => new Point2D(p.SourceX, p.SourceY)).ToList();
+                var target = activePoints.Select(p => new Point2D(p.TargetX, p.TargetY)).ToList();
 
                 bool computeScale = ChkComputeScale.IsChecked ?? true;
                 _lastResult = HelmertSolver.Solve(source, target, computeScale);
@@ -65,14 +67,18 @@ namespace Helmert2D.Core
                 TxtScale.Text = _lastResult.Scale.ToString("F6");
                 TxtRMSE.Text = _lastResult.Rmse.ToString("F6");
 
-                // Calculate and update residuals for each point
+                // Calculate and update residuals for ALL valid points (even inactive ones, acting as check points)
                 foreach (var point in validPoints)
                 {
                     double predX = _lastResult.TranslationX + _lastResult.A * point.SourceX - _lastResult.B * point.SourceY;
                     double predY = _lastResult.TranslationY + _lastResult.B * point.SourceX + _lastResult.A * point.SourceY;
 
-                    point.ResidualX = predX - point.TargetX;
-                    point.ResidualY = predY - point.TargetY;
+                    double rx = predX - point.TargetX;
+                    double ry = predY - point.TargetY;
+
+                    point.ResidualX = rx;
+                    point.ResidualY = ry;
+                    point.ResidualDist = Math.Sqrt(rx * rx + ry * ry);
                 }
 
                 BtnApply.IsEnabled = true;
@@ -101,12 +107,20 @@ namespace Helmert2D.Core
 
     public class PointPairViewModel : INotifyPropertyChanged
     {
+        private bool _isActive = true;
         private double _sourceX;
         private double _sourceY;
         private double _targetX;
         private double _targetY;
         private double? _residualX;
         private double? _residualY;
+        private double? _residualDist;
+
+        public bool IsActive
+        {
+            get => _isActive;
+            set { _isActive = value; OnPropertyChanged(); }
+        }
 
         public double SourceX
         {
@@ -138,6 +152,11 @@ namespace Helmert2D.Core
         {
             get => _residualY;
             set { _residualY = value; OnPropertyChanged(); }
+        }
+        public double? ResidualDist
+        {
+            get => _residualDist;
+            set { _residualDist = value; OnPropertyChanged(); }
         }
 
         public event PropertyChangedEventHandler? PropertyChanged;
