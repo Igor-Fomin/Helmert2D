@@ -75,7 +75,8 @@ namespace Helmert2D
             {
                 HelmertView view = new HelmertView();
 
-                view.PickPointsRequested += () => PickPoints(view);
+                view.PickPointsRequested += () => PickPoints(view, append: false);
+                view.AddPointRequested += () => PickPoints(view, append: true);
                 view.ApplyTransformationRequested += (result, transformCopy) => ApplyTransformation(result, transformCopy);
 
                 Autodesk.AutoCAD.ApplicationServices.Application.ShowModalWindow(view);
@@ -86,7 +87,7 @@ namespace Helmert2D
             }
         }
 
-        private void PickPoints(HelmertView view)
+        private void PickPoints(HelmertView view, bool append)
         {
             view.Hide();
 
@@ -99,7 +100,7 @@ namespace Helmert2D
             {
                 while (true)
                 {
-                    var pPtOptsSource = new PromptPointOptions("\nPick Source Point (or ESC to finish): ");
+                    var pPtOptsSource = new PromptPointOptions(append ? "\nPick Additional Source Point (or ESC to finish): " : "\nPick Source Point (or ESC to finish): ");
                     pPtOptsSource.AllowNone = true;
                     var pPtResSource = ed.GetPoint(pPtOptsSource);
 
@@ -127,7 +128,14 @@ namespace Helmert2D
             }
             finally
             {
-                view.UpdatePoints(pickedPoints);
+                if (append)
+                {
+                    view.AppendPoints(pickedPoints);
+                }
+                else
+                {
+                    view.UpdatePoints(pickedPoints);
+                }
                 view.Show();
             }
         }

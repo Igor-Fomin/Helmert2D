@@ -13,6 +13,7 @@ namespace Helmert2D.Core
         public ObservableCollection<PointPairViewModel> Points { get; set; }
 
         public event Action? PickPointsRequested;
+        public event Action? AddPointRequested;
         public event Action<HelmertResult, bool>? ApplyTransformationRequested;
 
         private HelmertResult? _lastResult;
@@ -27,6 +28,14 @@ namespace Helmert2D.Core
         public void UpdatePoints(IEnumerable<PointPairViewModel> newPoints)
         {
             Points.Clear();
+            foreach (var p in newPoints)
+            {
+                Points.Add(p);
+            }
+        }
+
+        public void AppendPoints(IEnumerable<PointPairViewModel> newPoints)
+        {
             foreach (var p in newPoints)
             {
                 Points.Add(p);
@@ -106,7 +115,7 @@ namespace Helmert2D.Core
 
         private void AddPoint_Click(object sender, RoutedEventArgs e)
         {
-            Points.Add(new PointPairViewModel());
+            AddPointRequested?.Invoke();
         }
 
         private void DeletePoint_Click(object sender, RoutedEventArgs e)
