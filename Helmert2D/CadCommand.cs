@@ -79,7 +79,7 @@ namespace Helmert2D
                 view.AddPointRequested += () => PickPoints(view, append: true);
                 view.ApplyTransformationRequested += (result, transformCopy) => ApplyTransformation(result, transformCopy);
 
-                Autodesk.AutoCAD.ApplicationServices.Application.ShowModalWindow(view);
+                Autodesk.AutoCAD.ApplicationServices.Application.ShowModelessWindow(view);
             }
             catch (System.Exception ex)
             {
@@ -137,6 +137,7 @@ namespace Helmert2D
                     view.UpdatePoints(pickedPoints);
                 }
                 view.Show();
+                Autodesk.AutoCAD.Internal.Utils.SetFocusToDwgView();
             }
         }
 
@@ -205,6 +206,8 @@ namespace Helmert2D
                     tr.Abort();
                 }
             }
+
+            Autodesk.AutoCAD.Internal.Utils.SetFocusToDwgView();
         }
     }
 }
