@@ -110,7 +110,7 @@
                 <TextBlock Text="Translation Y:" Grid.Row="0" Grid.Column="3"/>
                 <TextBox x:Name="TxtTransY" Grid.Row="0" Grid.Column="4" IsReadOnly="True"/>
 
-                <TextBlock Text="Rotation (deg):" Grid.Row="1" Grid.Column="0"/>
+                <TextBlock Text="Rotation (DMS):" Grid.Row="1" Grid.Column="0"/>
                 <TextBox x:Name="TxtRotation" Grid.Row="1" Grid.Column="1" IsReadOnly="True"/>
 
                 <TextBlock Text="Scale Factor:" Grid.Row="1" Grid.Column="3"/>

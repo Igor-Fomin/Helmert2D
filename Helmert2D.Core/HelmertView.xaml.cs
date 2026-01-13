@@ -70,7 +70,7 @@ namespace Helmert2D.Core
 
                 TxtTransX.Text = _lastResult.TranslationX.ToString("F4");
                 TxtTransY.Text = _lastResult.TranslationY.ToString("F4");
-                TxtRotation.Text = _lastResult.RotationDeg.ToString("F6");
+                TxtRotation.Text = FormatToDMS(_lastResult.RotationDeg);
                 TxtScale.Text = _lastResult.Scale.ToString("F6");
                 TxtRMSE.Text = _lastResult.Rmse.ToString("F6");
 
@@ -134,6 +134,18 @@ namespace Helmert2D.Core
                     Points.Remove(item);
                 }
             }
+        }
+
+        private string FormatToDMS(double decimalDegrees)
+        {
+            double absDegrees = Math.Abs(decimalDegrees);
+            int d = (int)absDegrees;
+            double mFull = (absDegrees - d) * 60.0;
+            int m = (int)mFull;
+            double s = (mFull - m) * 60.0;
+
+            string sign = decimalDegrees < 0 ? "-" : "";
+            return $"{sign}{d}° {m}' {s:F2}\"";
         }
     }
 
