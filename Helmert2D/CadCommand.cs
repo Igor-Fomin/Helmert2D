@@ -14,6 +14,8 @@ namespace Helmert2D
 {
     public class CadCommand : IExtensionApplication
     {
+        private static HelmertView? _view;
+
         public void Initialize()
         {
             AppDomain.CurrentDomain.AssemblyResolve += CurrentDomain_AssemblyResolve;
@@ -28,12 +30,9 @@ namespace Helmert2D
         {
             try
             {
-                // 1. Robustly get the assembly name we are looking for
                 var assemblyName = new AssemblyName(args.Name).Name;
                 if (string.IsNullOrEmpty(assemblyName)) return null;
 
-                // 2. CRITICAL FIX: Use typeof(CadCommand).Assembly instead of GetExecutingAssembly()
-                // This ensures we get the location of THIS dll, not the generic runtime.
                 string? assemblyLoc = typeof(CadCommand).Assembly.Location;
                 string? assemblyPath = null;
 
@@ -43,15 +42,11 @@ namespace Helmert2D
                 }
                 else
                 {
-                    // Fallback for in-memory loading (e.g. DevLoader)
-                    // If Location is empty, we assume we are running from the debug build folder.
                     assemblyPath = @"D:\Visual Studio Projects\Helmert2D\Helmert2D\bin\x64\Debug\net8.0-windows";
                 }
 
-                // 3. Safety check: If for some reason we can't find our own location, stop.
                 if (string.IsNullOrEmpty(assemblyPath)) return null;
 
-                // 4. Combine paths
                 string targetPath = Path.Combine(assemblyPath, assemblyName + ".dll");
 
                 if (File.Exists(targetPath))
@@ -61,7 +56,6 @@ namespace Helmert2D
             }
             catch
             {
-                // Never throw an exception inside an AssemblyResolver, it crashes the app.
                 return null;
             }
 
@@ -73,13 +67,21 @@ namespace Helmert2D
         {
             try
             {
-                HelmertView view = new HelmertView();
+                if (_view != null && _view.IsLoaded)
+                {
+                    _view.Show();
+                    _view.Activate();
+                    return;
+                }
 
-                view.PickPointsRequested += () => PickPoints(view, append: false);
-                view.AddPointRequested += () => PickPoints(view, append: true);
-                view.ApplyTransformationRequested += (result, transformCopy) => ApplyTransformation(result, transformCopy);
+                _view = new HelmertView();
+                _view.Closed += (s, e) => _view = null;
 
-                Autodesk.AutoCAD.ApplicationServices.Application.ShowModelessWindow(view);
+                _view.PickPointsRequested += () => PickPoints(_view, append: false);
+                _view.AddPointRequested += () => PickPoints(_view, append: true);
+                _view.ApplyTransformationRequested += (result, transformCopy) => ApplyTransformation(result, transformCopy);
+
+                Autodesk.AutoCAD.ApplicationServices.Application.ShowModelessWindow(_view);
             }
             catch (System.Exception ex)
             {
@@ -143,6 +145,8 @@ namespace Helmert2D
 
         private void ApplyTransformation(HelmertResult result, bool transformCopy)
         {
+            Autodesk.AutoCAD.Internal.Utils.SetFocusToDwgView();
+
             var doc = Autodesk.AutoCAD.ApplicationServices.Application.DocumentManager.MdiActiveDocument;
             var ed = doc.Editor;
             var db = doc.Database;
@@ -155,10 +159,10 @@ namespace Helmert2D
                 return;
 
             double[] matData = new double[] {
-                result.A, -result.B, 0, result.TranslationX,
-                result.B,  result.A, 0, result.TranslationY,
-                0,         0,        1, 0,
-                0,         0,        0, 1
+                result.A, -result.B, 0,            result.TranslationX,
+                result.B,  result.A, 0,            result.TranslationY,
+                0,         0,        result.Scale, 0,
+                0,         0,        0,            1
             };
 
             var mat = new Matrix3d(matData);

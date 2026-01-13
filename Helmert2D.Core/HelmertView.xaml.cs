@@ -103,8 +103,16 @@ namespace Helmert2D.Core
         {
             if (_lastResult != null)
             {
-                bool transformCopy = ChkTransformCopy.IsChecked ?? false;
-                ApplyTransformationRequested?.Invoke(_lastResult, transformCopy);
+                try
+                {
+                    BtnApply.IsEnabled = false;
+                    bool transformCopy = ChkTransformCopy.IsChecked ?? false;
+                    ApplyTransformationRequested?.Invoke(_lastResult, transformCopy);
+                }
+                finally
+                {
+                    BtnApply.IsEnabled = true;
+                }
             }
         }
 
