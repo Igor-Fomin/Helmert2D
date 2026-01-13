@@ -103,6 +103,23 @@ namespace Helmert2D.Core
         {
             this.Close();
         }
+
+        private void AddPoint_Click(object sender, RoutedEventArgs e)
+        {
+            Points.Add(new PointPairViewModel());
+        }
+
+        private void DeletePoint_Click(object sender, RoutedEventArgs e)
+        {
+            var selectedItems = PointsGrid.SelectedItems.Cast<PointPairViewModel>().ToList();
+            if (selectedItems.Any())
+            {
+                foreach (var item in selectedItems)
+                {
+                    Points.Remove(item);
+                }
+            }
+        }
     }
 
     public class PointPairViewModel : INotifyPropertyChanged

@@ -70,6 +70,12 @@
 
         <GroupBox Grid.Row="1" Header="Control Points (Source -> Target)">
             <DataGrid x:Name="PointsGrid" Margin="5">
+                <DataGrid.ContextMenu>
+                    <ContextMenu>
+                        <MenuItem Header="Add Point" Click="AddPoint_Click"/>
+                        <MenuItem Header="Delete Selected Point(s)" Click="DeletePoint_Click"/>
+                    </ContextMenu>
+                </DataGrid.ContextMenu>
                 <DataGrid.Columns>
                     <DataGridCheckBoxColumn Header="Use" Binding="{Binding IsActive}" Width="40"/>
                     <DataGridTextColumn Header="Source X" Binding="{Binding SourceX, StringFormat=F3}" Width="*"/>
