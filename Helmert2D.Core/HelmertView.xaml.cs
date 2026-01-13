@@ -51,10 +51,8 @@ namespace Helmert2D.Core
         {
             try
             {
-                // Filter out empty lines (0,0 -> 0,0) which can happen if user adds a row in DataGrid but doesn't fill it
-                var validPoints = Points
-                    .Where(p => Math.Abs(p.SourceX) > 0.000001 || Math.Abs(p.SourceY) > 0.000001)
-                    .ToList();
+                // Use all points in the list since we disabled empty row addition
+                var validPoints = Points.ToList();
 
                 var activePoints = validPoints.Where(p => p.IsActive).ToList();
 
