@@ -297,30 +297,19 @@ namespace Helmert2D
                         }
                     }
 
-                    // Rebuild Surfaces to snap them to the transformed data
-                    int rebuiltSurfaces = 0;
-                    foreach (var surf in surfacesToRebuild)
-                    {
-                        try
-                        {
-                            surf.UpgradeOpen();
-                            dynamic dSurf = surf;
-                            dSurf.Rebuild();
-                            rebuiltSurfaces++;
-                        }
-                        catch (System.Exception ex)
-                        {
-                            ed.WriteMessage($"\nFailed to rebuild surface: {ex.Message}");
-                        }
-                    }
+                    // Rebuild Surfaces logic REMOVED as per user request.
+                    // Surfaces are skipped in the loop above to avoid double-transformation.
+                    // They will remain in their original location until the user manually Rebuilds them in Civil 3D.
+                    // Labels are also skipped and will update when the Surface is rebuilt.
 
                     tr.Commit();
                     ed.Regen();
                     
                     string msg = $"\nSuccessfully transformed {count} objects" + (transformCopy ? " (Copies created)." : ".");
-                    if (rebuiltSurfaces > 0)
+                    
+                    if (surfacesToRebuild.Count > 0)
                     {
-                        msg += $" (Rebuilt {rebuiltSurfaces} Surfaces).";
+                        msg += $" (Skipped {surfacesToRebuild.Count} Surfaces - Manually Rebuild to update).";
                     }
                     if (skippedCount > 0)
                     {
