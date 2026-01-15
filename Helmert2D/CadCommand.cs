@@ -199,12 +199,10 @@ namespace Helmert2D
                         {
                             string typeName = ent.GetType().Name;
                             
-                            // SKIP dynamic Civil 3D objects. 
-                            // Surfaces should update when their source data (Points/Lines) is transformed.
-                            // Labels should follow their parent object automatically.
-                            if (typeName.Contains("TinSurface") || 
-                                typeName.Contains("GridSurface") || 
-                                typeName.Contains("LabelGroup") ||
+                            // SKIP dynamic Civil 3D LABELS only.
+                            // Labels should follow their parent object (Surface/Alignment) automatically.
+                            // Transforming them explicitly causes eNotApplicable or conflicts.
+                            if (typeName.Contains("LabelGroup") ||
                                 typeName.Contains("CivilLabel") ||
                                 typeName.Contains("SurfaceContourLabel"))
                             {
@@ -212,8 +210,16 @@ namespace Helmert2D
                                 continue;
                             }
 
+                            bool isSurface = typeName.Contains("TinSurface") || typeName.Contains("GridSurface");
+
+                            // Logic for Copy vs Move
+                            // We generally do NOT want to clone a DTM (Surface) as it duplicates heavy data/definitions.
+                            // If user selected Copy, we Copy other entities but MOVE the Surface.
+                            bool shouldCopy = transformCopy;
+                            if (isSurface) shouldCopy = false; 
+
                             Entity targetEnt;
-                            if (transformCopy && btr != null)
+                            if (shouldCopy && btr != null)
                             {
                                 targetEnt = (Entity)ent.Clone();
                                 btr.AppendEntity(targetEnt);
@@ -255,20 +261,38 @@ namespace Helmert2D
                             {
                                 targetEnt.TransformBy(mat);
                             }
-                            catch (Autodesk.AutoCAD.Runtime.Exception ex) when (ex.ErrorStatus == ErrorStatus.CannotScaleNonUniformly)
+                            catch (Autodesk.AutoCAD.Runtime.Exception ex)
                             {
-                                // Fallback to uniform scaling if non-uniform is not supported
-                                targetEnt.TransformBy(matUniform);
+                                if (ex.ErrorStatus == ErrorStatus.CannotScaleNonUniformly)
+                                {
+                                    // Fallback to uniform scaling if non-uniform is not supported (Common for Surfaces)
+                                    targetEnt.TransformBy(matUniform);
+                                }
+                                else if (ex.ErrorStatus == ErrorStatus.NotApplicable)
+                                {
+                                    // Ignore entities that refuse transformation
+                                    // But we shouldn't be here for Labels anymore due to the check above
+                                }
+                                else
+                                {
+                                    throw;
+                                }
                             }
 
                             // Restore Z if it drifted (Capture-Transform-Restore)
+                            // This is CRITICAL for Surfaces transformed with 'matUniform' to prevent them from moving vertically due to scale.
                             if (originalZ.HasValue)
                             {
                                 double? newZ = GetElevation(targetEnt);
                                 if (newZ.HasValue && Math.Abs(newZ.Value - originalZ.Value) > 1e-6)
                                 {
                                     var correction = Matrix3d.Displacement(new Vector3d(0, 0, originalZ.Value - newZ.Value));
-                                    targetEnt.TransformBy(correction);
+                                    try 
+                                    {
+                                        targetEnt.TransformBy(correction);
+                                    } 
+                                    catch (Autodesk.AutoCAD.Runtime.Exception ex) when (ex.ErrorStatus == ErrorStatus.NotApplicable) 
+                                    { /* Ignore */ }
                                 }
                             }
 
@@ -278,10 +302,10 @@ namespace Helmert2D
                     tr.Commit();
                     ed.Regen();
                     
-                    string msg = $"\nSuccessfully transformed {count} objects" + (transformCopy ? " (Copies created)." : ".");
+                    string msg = $"\nSuccessfully transformed {count} objects" + (transformCopy ? " (Copies created, Surfaces moved)." : ".");
                     if (skippedCount > 0)
                     {
-                        msg += $" (Skipped {skippedCount} dynamic Civil 3D objects - Rebuild Surface to update).";
+                        msg += $" (Skipped {skippedCount} Labels - they will update automatically).";
                     }
                     ed.WriteMessage(msg + "\n");
                 }
