@@ -308,6 +308,14 @@ namespace Helmert2D
                     return null;
                 }
             }
+
+            // Generic fallback for any entity with bounds (Surfaces, Feature Lines, Alignments, Labels, etc.)
+            // This ensures we capture the vertical position of complex objects.
+            if (ent.Bounds.HasValue)
+            {
+                return ent.Bounds.Value.MinPoint.Z;
+            }
+
             return null;
         }
     }
