@@ -168,6 +168,16 @@ namespace Helmert2D
 
             var mat = new Matrix3d(matData);
 
+            // Create uniform transform matrix as a fallback for entities that don't support non-uniform scaling
+            double[] matDataUniform = new double[] {
+                result.A, -result.B, 0,            result.TranslationX,
+                result.B,  result.A, 0,            result.TranslationY,
+                0,         0,        result.Scale, 0,
+                0,         0,        0,            1
+            };
+
+            var matUniform = new Matrix3d(matDataUniform);
+
             using (doc.LockDocument())
             using (Transaction tr = doc.TransactionManager.StartTransaction())
             {
@@ -202,7 +212,15 @@ namespace Helmert2D
                             // Capture original Z for point-based objects
                             double? originalZ = GetElevation(targetEnt);
 
-                            targetEnt.TransformBy(mat);
+                            try
+                            {
+                                targetEnt.TransformBy(mat);
+                            }
+                            catch (Autodesk.AutoCAD.Runtime.Exception ex) when (ex.ErrorStatus == ErrorStatus.CannotScaleNonUniformly)
+                            {
+                                // Fallback to uniform scaling if non-uniform is not supported
+                                targetEnt.TransformBy(matUniform);
+                            }
 
                             // Restore Z if it drifted (Capture-Transform-Restore)
                             if (originalZ.HasValue)
