@@ -191,21 +191,32 @@ namespace Helmert2D
                     }
 
                     int count = 0;
+                    int skippedCount = 0;
                     foreach (SelectedObject so in pSelRes.Value)
                     {
                         Entity? ent = tr.GetObject(so.ObjectId, OpenMode.ForRead) as Entity;
                         if (ent != null)
                         {
                             string typeName = ent.GetType().Name;
-                            bool isSurface = typeName.Contains("Surface") && !typeName.Contains("Label");
-                            // Avoid cloning Surfaces (DTM) or complex Civil objects that shouldn't be duplicated
-                            bool shouldCopy = transformCopy && btr != null && !isSurface;
+                            
+                            // SKIP dynamic Civil 3D objects. 
+                            // Surfaces should update when their source data (Points/Lines) is transformed.
+                            // Labels should follow their parent object automatically.
+                            if (typeName.Contains("TinSurface") || 
+                                typeName.Contains("GridSurface") || 
+                                typeName.Contains("LabelGroup") ||
+                                typeName.Contains("CivilLabel") ||
+                                typeName.Contains("SurfaceContourLabel"))
+                            {
+                                skippedCount++;
+                                continue;
+                            }
 
                             Entity targetEnt;
-                            if (shouldCopy)
+                            if (transformCopy && btr != null)
                             {
                                 targetEnt = (Entity)ent.Clone();
-                                btr!.AppendEntity(targetEnt);
+                                btr.AppendEntity(targetEnt);
                                 tr.AddNewlyCreatedDBObject(targetEnt, true);
                             }
                             else
@@ -224,13 +235,9 @@ namespace Helmert2D
                                 {
                                     targetEnt.TransformBy(mat);
                                 }
-                                catch (Autodesk.AutoCAD.Runtime.Exception ex)
+                                catch (Autodesk.AutoCAD.Runtime.Exception ex) when (ex.ErrorStatus == ErrorStatus.CannotScaleNonUniformly)
                                 {
-                                    if (ex.ErrorStatus == ErrorStatus.CannotScaleNonUniformly)
-                                        targetEnt.TransformBy(matUniform);
-                                    else if (ex.ErrorStatus == ErrorStatus.NotApplicable)
-                                    { /* Ignore labels/entities that refuse transform */ }
-                                    else throw;
+                                    targetEnt.TransformBy(matUniform);
                                 }
 
                                 // Explicitly restore Z for both ends to preserve slope/elevation
@@ -248,23 +255,10 @@ namespace Helmert2D
                             {
                                 targetEnt.TransformBy(mat);
                             }
-                            catch (Autodesk.AutoCAD.Runtime.Exception ex)
+                            catch (Autodesk.AutoCAD.Runtime.Exception ex) when (ex.ErrorStatus == ErrorStatus.CannotScaleNonUniformly)
                             {
-                                if (ex.ErrorStatus == ErrorStatus.CannotScaleNonUniformly)
-                                {
-                                    // Fallback to uniform scaling if non-uniform is not supported
-                                    targetEnt.TransformBy(matUniform);
-                                }
-                                else if (ex.ErrorStatus == ErrorStatus.NotApplicable)
-                                {
-                                    // Ignore entities that refuse transformation (e.g., dynamic labels tied to parent)
-                                    // Do not increment count if we didn't do anything? Or count it as handled?
-                                    // Let's count it as processed to avoid confusion.
-                                }
-                                else
-                                {
-                                    throw;
-                                }
+                                // Fallback to uniform scaling if non-uniform is not supported
+                                targetEnt.TransformBy(matUniform);
                             }
 
                             // Restore Z if it drifted (Capture-Transform-Restore)
@@ -274,12 +268,7 @@ namespace Helmert2D
                                 if (newZ.HasValue && Math.Abs(newZ.Value - originalZ.Value) > 1e-6)
                                 {
                                     var correction = Matrix3d.Displacement(new Vector3d(0, 0, originalZ.Value - newZ.Value));
-                                    try 
-                                    {
-                                        targetEnt.TransformBy(correction);
-                                    } 
-                                    catch (Autodesk.AutoCAD.Runtime.Exception ex) when (ex.ErrorStatus == ErrorStatus.NotApplicable) 
-                                    { /* Ignore */ }
+                                    targetEnt.TransformBy(correction);
                                 }
                             }
 
@@ -288,7 +277,13 @@ namespace Helmert2D
                     }
                     tr.Commit();
                     ed.Regen();
-                    ed.WriteMessage($"\nSuccessfully transformed {count} objects" + (transformCopy ? " (Copies created)." : ".") + "\n");
+                    
+                    string msg = $"\nSuccessfully transformed {count} objects" + (transformCopy ? " (Copies created)." : ".");
+                    if (skippedCount > 0)
+                    {
+                        msg += $" (Skipped {skippedCount} dynamic Civil 3D objects - Rebuild Surface to update).";
+                    }
+                    ed.WriteMessage(msg + "\n");
                 }
                 catch (System.Exception ex)
                 {
