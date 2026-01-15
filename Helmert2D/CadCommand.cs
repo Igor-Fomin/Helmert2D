@@ -209,6 +209,29 @@ namespace Helmert2D
                                 targetEnt.UpgradeOpen();
                             }
 
+                            // Special handling for Line entities (slanted lines need both ends fixed)
+                            if (targetEnt is Line line)
+                            {
+                                double oldStartZ = line.StartPoint.Z;
+                                double oldEndZ = line.EndPoint.Z;
+
+                                try
+                                {
+                                    targetEnt.TransformBy(mat);
+                                }
+                                catch (Autodesk.AutoCAD.Runtime.Exception ex) when (ex.ErrorStatus == ErrorStatus.CannotScaleNonUniformly)
+                                {
+                                    targetEnt.TransformBy(matUniform);
+                                }
+
+                                // Explicitly restore Z for both ends to preserve slope/elevation
+                                line.StartPoint = new Point3d(line.StartPoint.X, line.StartPoint.Y, oldStartZ);
+                                line.EndPoint = new Point3d(line.EndPoint.X, line.EndPoint.Y, oldEndZ);
+
+                                count++;
+                                continue; // Skip generic correction
+                            }
+
                             // Capture original Z for point-based objects
                             double? originalZ = GetElevation(targetEnt);
 
