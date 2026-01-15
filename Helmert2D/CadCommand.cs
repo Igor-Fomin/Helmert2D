@@ -196,11 +196,16 @@ namespace Helmert2D
                         Entity? ent = tr.GetObject(so.ObjectId, OpenMode.ForRead) as Entity;
                         if (ent != null)
                         {
+                            string typeName = ent.GetType().Name;
+                            bool isSurface = typeName.Contains("Surface") && !typeName.Contains("Label");
+                            // Avoid cloning Surfaces (DTM) or complex Civil objects that shouldn't be duplicated
+                            bool shouldCopy = transformCopy && btr != null && !isSurface;
+
                             Entity targetEnt;
-                            if (transformCopy && btr != null)
+                            if (shouldCopy)
                             {
                                 targetEnt = (Entity)ent.Clone();
-                                btr.AppendEntity(targetEnt);
+                                btr!.AppendEntity(targetEnt);
                                 tr.AddNewlyCreatedDBObject(targetEnt, true);
                             }
                             else
@@ -219,9 +224,13 @@ namespace Helmert2D
                                 {
                                     targetEnt.TransformBy(mat);
                                 }
-                                catch (Autodesk.AutoCAD.Runtime.Exception ex) when (ex.ErrorStatus == ErrorStatus.CannotScaleNonUniformly)
+                                catch (Autodesk.AutoCAD.Runtime.Exception ex)
                                 {
-                                    targetEnt.TransformBy(matUniform);
+                                    if (ex.ErrorStatus == ErrorStatus.CannotScaleNonUniformly)
+                                        targetEnt.TransformBy(matUniform);
+                                    else if (ex.ErrorStatus == ErrorStatus.NotApplicable)
+                                    { /* Ignore labels/entities that refuse transform */ }
+                                    else throw;
                                 }
 
                                 // Explicitly restore Z for both ends to preserve slope/elevation
@@ -239,10 +248,23 @@ namespace Helmert2D
                             {
                                 targetEnt.TransformBy(mat);
                             }
-                            catch (Autodesk.AutoCAD.Runtime.Exception ex) when (ex.ErrorStatus == ErrorStatus.CannotScaleNonUniformly)
+                            catch (Autodesk.AutoCAD.Runtime.Exception ex)
                             {
-                                // Fallback to uniform scaling if non-uniform is not supported
-                                targetEnt.TransformBy(matUniform);
+                                if (ex.ErrorStatus == ErrorStatus.CannotScaleNonUniformly)
+                                {
+                                    // Fallback to uniform scaling if non-uniform is not supported
+                                    targetEnt.TransformBy(matUniform);
+                                }
+                                else if (ex.ErrorStatus == ErrorStatus.NotApplicable)
+                                {
+                                    // Ignore entities that refuse transformation (e.g., dynamic labels tied to parent)
+                                    // Do not increment count if we didn't do anything? Or count it as handled?
+                                    // Let's count it as processed to avoid confusion.
+                                }
+                                else
+                                {
+                                    throw;
+                                }
                             }
 
                             // Restore Z if it drifted (Capture-Transform-Restore)
@@ -252,7 +274,12 @@ namespace Helmert2D
                                 if (newZ.HasValue && Math.Abs(newZ.Value - originalZ.Value) > 1e-6)
                                 {
                                     var correction = Matrix3d.Displacement(new Vector3d(0, 0, originalZ.Value - newZ.Value));
-                                    targetEnt.TransformBy(correction);
+                                    try 
+                                    {
+                                        targetEnt.TransformBy(correction);
+                                    } 
+                                    catch (Autodesk.AutoCAD.Runtime.Exception ex) when (ex.ErrorStatus == ErrorStatus.NotApplicable) 
+                                    { /* Ignore */ }
                                 }
                             }
 
