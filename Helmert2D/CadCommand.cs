@@ -158,10 +158,11 @@ namespace Helmert2D
             if (pSelRes.Status != PromptStatus.OK)
                 return;
 
+            // Create affine transform matrix with Z-scale fixed at 1.0 to prevent Z-scaling drift
             double[] matData = new double[] {
                 result.A, -result.B, 0,            result.TranslationX,
                 result.B,  result.A, 0,            result.TranslationY,
-                0,         0,        result.Scale, 0,
+                0,         0,        1.0,          0,
                 0,         0,        0,            1
             };
 
@@ -185,18 +186,35 @@ namespace Helmert2D
                         Entity? ent = tr.GetObject(so.ObjectId, OpenMode.ForRead) as Entity;
                         if (ent != null)
                         {
+                            Entity targetEnt;
                             if (transformCopy && btr != null)
                             {
-                                Entity clone = (Entity)ent.Clone();
-                                btr.AppendEntity(clone);
-                                tr.AddNewlyCreatedDBObject(clone, true);
-                                clone.TransformBy(mat);
+                                targetEnt = (Entity)ent.Clone();
+                                btr.AppendEntity(targetEnt);
+                                tr.AddNewlyCreatedDBObject(targetEnt, true);
                             }
                             else
                             {
-                                ent.UpgradeOpen();
-                                ent.TransformBy(mat);
+                                targetEnt = ent;
+                                targetEnt.UpgradeOpen();
                             }
+
+                            // Capture original Z for point-based objects
+                            double? originalZ = GetElevation(targetEnt);
+
+                            targetEnt.TransformBy(mat);
+
+                            // Restore Z if it drifted (Capture-Transform-Restore)
+                            if (originalZ.HasValue)
+                            {
+                                double? newZ = GetElevation(targetEnt);
+                                if (newZ.HasValue && Math.Abs(newZ.Value - originalZ.Value) > 1e-6)
+                                {
+                                    var correction = Matrix3d.Displacement(new Vector3d(0, 0, originalZ.Value - newZ.Value));
+                                    targetEnt.TransformBy(correction);
+                                }
+                            }
+
                             count++;
                         }
                     }
@@ -212,6 +230,30 @@ namespace Helmert2D
             }
 
             Autodesk.AutoCAD.Internal.Utils.SetFocusToDwgView();
+        }
+
+        private double? GetElevation(Entity ent)
+        {
+            if (ent is BlockReference br) return br.Position.Z;
+            if (ent is DBPoint pt) return pt.Position.Z;
+            if (ent is Circle c) return c.Center.Z;
+            if (ent is DBText txt) return txt.Position.Z;
+            if (ent is MText mtxt) return mtxt.Location.Z;
+
+            // Check for Civil 3D CogoPoint using dynamic typing
+            if (ent.GetType().Name == "CogoPoint")
+            {
+                try
+                {
+                    dynamic cogo = ent;
+                    return (double)cogo.Location.Z;
+                }
+                catch
+                {
+                    return null;
+                }
+            }
+            return null;
         }
     }
 }

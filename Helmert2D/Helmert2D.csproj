@@ -32,7 +32,7 @@
 			<HintPath>C:\Program Files\Autodesk\AutoCAD 2026\ACA\AecBaseMgd.dll</HintPath>
 			<Private>False</Private>
 		</Reference>
-		<Reference Include="AeccDbMgd">
+		<Reference Include="AeccDbMgdge">
 			<HintPath>C:\Program Files\Autodesk\AutoCAD 2026\C3D\AeccDbMgd.dll</HintPath>
 			<Private>False</Private>
 		</Reference>
