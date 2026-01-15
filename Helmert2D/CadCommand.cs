@@ -192,6 +192,8 @@ namespace Helmert2D
 
                     int count = 0;
                     int skippedCount = 0;
+                    var surfacesToRebuild = new List<Entity>();
+
                     foreach (SelectedObject so in pSelRes.Value)
                     {
                         Entity? ent = tr.GetObject(so.ObjectId, OpenMode.ForRead) as Entity;
@@ -199,9 +201,7 @@ namespace Helmert2D
                         {
                             string typeName = ent.GetType().Name;
                             
-                            // SKIP dynamic Civil 3D LABELS only.
-                            // Labels should follow their parent object (Surface/Alignment) automatically.
-                            // Transforming them explicitly causes eNotApplicable or conflicts.
+                            // SKIP dynamic Civil 3D LABELS.
                             if (typeName.Contains("LabelGroup") ||
                                 typeName.Contains("CivilLabel") ||
                                 typeName.Contains("SurfaceContourLabel"))
@@ -210,16 +210,16 @@ namespace Helmert2D
                                 continue;
                             }
 
-                            bool isSurface = typeName.Contains("TinSurface") || typeName.Contains("GridSurface");
-
-                            // Logic for Copy vs Move
-                            // We generally do NOT want to clone a DTM (Surface) as it duplicates heavy data/definitions.
-                            // If user selected Copy, we Copy other entities but MOVE the Surface.
-                            bool shouldCopy = transformCopy;
-                            if (isSurface) shouldCopy = false; 
+                            // Handle Surfaces: DO NOT transform them explicitly to avoid "double transformation".
+                            // Instead, store them to be Rebuilt after their source data is transformed.
+                            if (typeName.Contains("TinSurface") || typeName.Contains("GridSurface"))
+                            {
+                                surfacesToRebuild.Add(ent);
+                                continue;
+                            }
 
                             Entity targetEnt;
-                            if (shouldCopy && btr != null)
+                            if (transformCopy && btr != null)
                             {
                                 targetEnt = (Entity)ent.Clone();
                                 btr.AppendEntity(targetEnt);
@@ -265,13 +265,11 @@ namespace Helmert2D
                             {
                                 if (ex.ErrorStatus == ErrorStatus.CannotScaleNonUniformly)
                                 {
-                                    // Fallback to uniform scaling if non-uniform is not supported (Common for Surfaces)
                                     targetEnt.TransformBy(matUniform);
                                 }
                                 else if (ex.ErrorStatus == ErrorStatus.NotApplicable)
                                 {
-                                    // Ignore entities that refuse transformation
-                                    // But we shouldn't be here for Labels anymore due to the check above
+                                    // Ignore
                                 }
                                 else
                                 {
@@ -280,7 +278,6 @@ namespace Helmert2D
                             }
 
                             // Restore Z if it drifted (Capture-Transform-Restore)
-                            // This is CRITICAL for Surfaces transformed with 'matUniform' to prevent them from moving vertically due to scale.
                             if (originalZ.HasValue)
                             {
                                 double? newZ = GetElevation(targetEnt);
@@ -299,13 +296,35 @@ namespace Helmert2D
                             count++;
                         }
                     }
+
+                    // Rebuild Surfaces to snap them to the transformed data
+                    int rebuiltSurfaces = 0;
+                    foreach (var surf in surfacesToRebuild)
+                    {
+                        try
+                        {
+                            surf.UpgradeOpen();
+                            dynamic dSurf = surf;
+                            dSurf.Rebuild();
+                            rebuiltSurfaces++;
+                        }
+                        catch (System.Exception ex)
+                        {
+                            ed.WriteMessage($"\nFailed to rebuild surface: {ex.Message}");
+                        }
+                    }
+
                     tr.Commit();
                     ed.Regen();
                     
-                    string msg = $"\nSuccessfully transformed {count} objects" + (transformCopy ? " (Copies created, Surfaces moved)." : ".");
+                    string msg = $"\nSuccessfully transformed {count} objects" + (transformCopy ? " (Copies created)." : ".");
+                    if (rebuiltSurfaces > 0)
+                    {
+                        msg += $" (Rebuilt {rebuiltSurfaces} Surfaces).";
+                    }
                     if (skippedCount > 0)
                     {
-                        msg += $" (Skipped {skippedCount} Labels - they will update automatically).";
+                        msg += $" (Skipped {skippedCount} dynamic Labels).";
                     }
                     ed.WriteMessage(msg + "\n");
                 }
