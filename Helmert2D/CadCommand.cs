@@ -252,11 +252,25 @@ namespace Helmert2D
 
         private double? GetElevation(Entity ent)
         {
+            // Point-based
             if (ent is BlockReference br) return br.Position.Z;
             if (ent is DBPoint pt) return pt.Position.Z;
             if (ent is Circle c) return c.Center.Z;
             if (ent is DBText txt) return txt.Position.Z;
             if (ent is MText mtxt) return mtxt.Location.Z;
+
+            // Linear / Curve
+            if (ent is Line line) return line.StartPoint.Z;
+            if (ent is Polyline pl) return pl.Elevation; // LWPolyline
+            if (ent is Polyline2d pl2d) return pl2d.Elevation;
+            if (ent is Polyline3d pl3d)
+            {
+                // For 3D Polyline, accessing vertices requires transaction and opening objects.
+                // Keeping it simple for now as 2D Helmert is the focus.
+                return null;
+            }
+            if (ent is Arc arc) return arc.Center.Z;
+            if (ent is Ellipse el) return el.Center.Z;
 
             // Check for Civil 3D CogoPoint using dynamic typing
             if (ent.GetType().Name == "CogoPoint")

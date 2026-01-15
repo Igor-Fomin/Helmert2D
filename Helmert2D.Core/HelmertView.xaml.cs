@@ -70,7 +70,7 @@ namespace Helmert2D.Core
 
                 TxtTransX.Text = _lastResult.TranslationX.ToString("F4");
                 TxtTransY.Text = _lastResult.TranslationY.ToString("F4");
-                TxtRotation.Text = FormatToDMS(_lastResult.RotationDeg);
+                TxtRotation.Text = FormatToDMS(-_lastResult.RotationDeg); // Negate for Surveyor convention (CW positive)
                 TxtScale.Text = _lastResult.Scale.ToString("F6");
                 TxtRMSE.Text = _lastResult.Rmse.ToString("F6");
 
