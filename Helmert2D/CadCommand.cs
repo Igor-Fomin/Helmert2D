@@ -198,8 +198,19 @@ namespace Helmert2D
                         {
                             string typeName = ent.GetType().Name;
                             bool isSurface = typeName.Contains("Surface") && !typeName.Contains("Label");
+                            
+                            // Civil 3D entities (CogoPoints, Alignments, etc.) should generally NOT be cloned via standard CAD cloning
+                            // as this creates ID conflicts or duplicates that don't behave correctly. 
+                            bool isCivilEntity = typeName.Contains("CogoPoint") || 
+                                                 typeName.Contains("Alignment") || 
+                                                 typeName.Contains("FeatureLine") ||
+                                                 typeName.Contains("Corridor") ||
+                                                 typeName.Contains("Pipe") ||
+                                                 typeName.Contains("Structure");
+
                             // Avoid cloning Surfaces (DTM) or complex Civil objects that shouldn't be duplicated
-                            bool shouldCopy = transformCopy && btr != null && !isSurface;
+                            // If it's a Civil Entity, we force MOVE (shouldCopy = false)
+                            bool shouldCopy = transformCopy && btr != null && !isSurface && !isCivilEntity;
 
                             Entity targetEnt;
                             if (shouldCopy)
