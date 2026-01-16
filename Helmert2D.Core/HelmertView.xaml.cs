@@ -71,7 +71,8 @@ namespace Helmert2D.Core
                 TxtTransX.Text = _lastResult.TranslationX.ToString("F4");
                 TxtTransY.Text = _lastResult.TranslationY.ToString("F4");
                 TxtRotation.Text = FormatToDMS(-_lastResult.RotationDeg); // Negate for Surveyor convention (CW positive)
-                TxtScale.Text = _lastResult.Scale.ToString("F6");
+                TxtRotationDec.Text = (-_lastResult.RotationDeg).ToString("F11");
+                TxtScale.Text = _lastResult.Scale.ToString("F12");
                 TxtRMSE.Text = _lastResult.Rmse.ToString("F6");
 
                 // Calculate and update residuals for ALL valid points (even inactive ones, acting as check points)
@@ -145,7 +146,7 @@ namespace Helmert2D.Core
             double s = (mFull - m) * 60.0;
 
             string sign = decimalDegrees < 0 ? "-" : "";
-            return $"{sign}{d}° {m}' {s:F2}\"";
+            return $"{sign}{d}° {m}' {s:F7}\"";
         }
     }
 
