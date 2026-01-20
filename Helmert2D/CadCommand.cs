@@ -198,27 +198,11 @@ namespace Helmert2D
                         Autodesk.AutoCAD.DatabaseServices.Entity? ent = tr.GetObject(so.ObjectId, OpenMode.ForRead) as Autodesk.AutoCAD.DatabaseServices.Entity;
                         if (ent != null)
                         {
-                            string typeName = ent.GetType().Name;
-                            bool isSurface = typeName.Contains("Surface") && !typeName.Contains("Label");
-                            
-                            // Civil 3D entities (CogoPoints, Alignments, etc.) should generally NOT be cloned via standard CAD cloning
-                            // as this creates ID conflicts or duplicates that don't behave correctly. 
-                            bool isCivilEntity = typeName.Contains("CogoPoint") || 
-                                                 typeName.Contains("Alignment") || 
-                                                 typeName.Contains("FeatureLine") ||
-                                                 typeName.Contains("Corridor") ||
-                                                 typeName.Contains("Pipe") ||
-                                                 typeName.Contains("Structure");
-
-                            // Avoid cloning Surfaces (DTM) or complex Civil objects that shouldn't be duplicated
-                            // If it's a Civil Entity, we force MOVE (shouldCopy = false)
-                            bool shouldCopy = transformCopy && btr != null && !isSurface && !isCivilEntity;
-
                             Autodesk.AutoCAD.DatabaseServices.Entity targetEnt;
-                            if (shouldCopy)
+                            if (transformCopy && btr != null)
                             {
                                 targetEnt = (Autodesk.AutoCAD.DatabaseServices.Entity)ent.Clone();
-                                btr!.AppendEntity(targetEnt);
+                                btr.AppendEntity(targetEnt);
                                 tr.AddNewlyCreatedDBObject(targetEnt, true);
                             }
                             else
@@ -227,27 +211,42 @@ namespace Helmert2D
                                 targetEnt.UpgradeOpen();
                             }
 
-                            // Special handling for CogoPoint (Civil 3D) to prevent selection issues
-                            if (typeName == "CogoPoint")
+                            // ---------------------------------------------------------
+                            // FIX: Handle Civil 3D CogoPoints explicitly to fix selection issues
+                            // ---------------------------------------------------------
+                            if (targetEnt.GetType().Name == "CogoPoint")
                             {
                                 try
                                 {
                                     dynamic cogo = targetEnt;
-                                    // Use the matrix to calculate new location (preserving Z if mat has Z-scale=1)
-                                    Point3d newLoc = ((Point3d)cogo.Location).TransformBy(mat);
-                                    cogo.Location = newLoc;
+                                    Point3d oldLoc = cogo.Location;
+
+                                    // Apply Helmert Transformation Math Manually:
+                                    // x' = Tx + (Scale * cos * x) - (Scale * sin * y)
+                                    // y' = Ty + (Scale * sin * x) + (Scale * cos * y)
+                                    // Note: result.A = Scale * cos(rot), result.B = Scale * sin(rot)
                                     
-                                    // Force graphics/selection update
-                                    targetEnt.RecordGraphicsModified(true);
-                                    
+                                    double newX = result.TranslationX + result.A * oldLoc.X - result.B * oldLoc.Y;
+                                    double newY = result.TranslationY + result.B * oldLoc.X + result.A * oldLoc.Y;
+
+                                    // Set Location directly. 
+                                    // This is the "Civil 3D safe" way to move points that ensures 
+                                    // the selection area (spatial index) is updated immediately.
+                                    cogo.Location = new Point3d(newX, newY, oldLoc.Z);
+
+                                    // Optional: If you also want to rotate the marker symbol
+                                    // (Uncomment if needed, otherwise the marker stays upright)
+                                    // cogo.Rotation -= result.RotationRad; 
+
                                     count++;
-                                    continue;
+                                    continue; // Skip the generic TransformBy logic below
                                 }
-                                catch
+                                catch (System.Exception ex)
                                 {
-                                    // Fallback to standard TransformBy if dynamic access fails
+                                    ed.WriteMessage($"\nFailed to transform CogoPoint: {ex.Message}");
                                 }
                             }
+                            // ---------------------------------------------------------
 
                             // Special handling for Line entities (slanted lines need both ends fixed)
                             if (targetEnt is Line line)
