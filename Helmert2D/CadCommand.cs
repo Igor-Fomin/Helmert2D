@@ -234,6 +234,10 @@ namespace Helmert2D
                                     // Use the matrix to calculate new location (preserving Z if mat has Z-scale=1)
                                     Point3d newLoc = ((Point3d)cogo.Location).TransformBy(mat);
                                     cogo.Location = newLoc;
+                                    
+                                    // Force graphics/selection update
+                                    targetEnt.RecordGraphicsModified(true);
+                                    
                                     count++;
                                     continue;
                                 }
