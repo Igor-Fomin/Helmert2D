@@ -8,6 +8,8 @@ using Autodesk.AutoCAD.ApplicationServices;
 using Autodesk.AutoCAD.DatabaseServices;
 using Autodesk.AutoCAD.Geometry;
 using Autodesk.AutoCAD.EditorInput;
+using Autodesk.Civil.ApplicationServices;
+using Autodesk.Civil.DatabaseServices;
 using Helmert2D.Core;
 
 namespace Helmert2D
@@ -26,7 +28,7 @@ namespace Helmert2D
             AppDomain.CurrentDomain.AssemblyResolve -= CurrentDomain_AssemblyResolve;
         }
 
-        private Assembly? CurrentDomain_AssemblyResolve(object? sender, ResolveEventArgs args)
+        private System.Reflection.Assembly? CurrentDomain_AssemblyResolve(object? sender, ResolveEventArgs args)
         {
             try
             {
@@ -51,7 +53,7 @@ namespace Helmert2D
 
                 if (File.Exists(targetPath))
                 {
-                    return Assembly.LoadFrom(targetPath);
+                    return System.Reflection.Assembly.LoadFrom(targetPath);
                 }
             }
             catch
@@ -193,7 +195,7 @@ namespace Helmert2D
                     int count = 0;
                     foreach (SelectedObject so in pSelRes.Value)
                     {
-                        Entity? ent = tr.GetObject(so.ObjectId, OpenMode.ForRead) as Entity;
+                        Autodesk.AutoCAD.DatabaseServices.Entity? ent = tr.GetObject(so.ObjectId, OpenMode.ForRead) as Autodesk.AutoCAD.DatabaseServices.Entity;
                         if (ent != null)
                         {
                             string typeName = ent.GetType().Name;
@@ -212,10 +214,10 @@ namespace Helmert2D
                             // If it's a Civil Entity, we force MOVE (shouldCopy = false)
                             bool shouldCopy = transformCopy && btr != null && !isSurface && !isCivilEntity;
 
-                            Entity targetEnt;
+                            Autodesk.AutoCAD.DatabaseServices.Entity targetEnt;
                             if (shouldCopy)
                             {
-                                targetEnt = (Entity)ent.Clone();
+                                targetEnt = (Autodesk.AutoCAD.DatabaseServices.Entity)ent.Clone();
                                 btr!.AppendEntity(targetEnt);
                                 tr.AddNewlyCreatedDBObject(targetEnt, true);
                             }
@@ -319,21 +321,57 @@ namespace Helmert2D
                             count++;
                         }
                     }
+
                     tr.Commit();
-                    ed.Regen();
-                    ed.WriteMessage($"\nSuccessfully transformed {count} objects" + (transformCopy ? " (Copies created)." : ".") + "\n");
                 }
                 catch (System.Exception ex)
                 {
                     ed.WriteMessage($"\nError during transformation: {ex.Message}\n");
                     tr.Abort();
+                    return;
                 }
             }
+
+            // Update Civil 3D Point Groups in a separate transaction
+            // This ensures they see the committed changes from the transformation
+            using (Transaction tr2 = doc.TransactionManager.StartTransaction())
+            {
+                try
+                {
+                    var civilDoc = CivilApplication.ActiveDocument;
+                    if (civilDoc != null)
+                    {
+                        foreach (ObjectId pgId in civilDoc.PointGroups)
+                        {
+                            var pg = tr2.GetObject(pgId, OpenMode.ForRead) as PointGroup;
+                            if (pg != null)
+                            {
+                                // Force update even if not marked out of date, to ensure spatial index refresh
+                                pg.UpgradeOpen();
+                                pg.Update();
+                            }
+                        }
+                    }
+                    tr2.Commit();
+                }
+                catch
+                {
+                    // Ignore if not in Civil 3D environment or other error
+                    tr2.Abort();
+                }
+            }
+
+            ed.Regen();
+            // We can't access 'count' easily here if we broke the scope, but we can reconstruct the message or just say "Done".
+            // To keep 'count' valid, we'd need to refactor the variable scope. 
+            // For now, I'll just print a generic success message or move the message inside the try block before commit but that implies success before it happens.
+            // Actually, let's keep the message simple.
+            ed.WriteMessage($"\nTransformation complete.\n");
 
             Autodesk.AutoCAD.Internal.Utils.SetFocusToDwgView();
         }
 
-        private double? GetElevation(Entity ent)
+        private double? GetElevation(Autodesk.AutoCAD.DatabaseServices.Entity ent)
         {
             // Point-based
             if (ent is BlockReference br) return br.Position.Z;

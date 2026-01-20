@@ -37,6 +37,14 @@
 			<HintPath>C:\Program Files\Autodesk\AutoCAD 2025\C3D\AeccDbMgd.dll</HintPath>
 			<Private>False</Private>
 		</Reference>
+		<Reference Include="CivilMgd">
+			<HintPath>C:\Program Files\Autodesk\AutoCAD 2025\C3D\CivilMgd.dll</HintPath>
+			<Private>False</Private>
+		</Reference>
+		<Reference Include="CivilDbMgd">
+			<HintPath>C:\Program Files\Autodesk\AutoCAD 2025\C3D\CivilDbMgd.dll</HintPath>
+			<Private>False</Private>
+		</Reference>
 	</ItemGroup>
 
 </Project>
