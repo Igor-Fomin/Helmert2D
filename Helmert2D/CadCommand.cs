@@ -225,6 +225,24 @@ namespace Helmert2D
                                 targetEnt.UpgradeOpen();
                             }
 
+                            // Special handling for CogoPoint (Civil 3D) to prevent selection issues
+                            if (typeName == "CogoPoint")
+                            {
+                                try
+                                {
+                                    dynamic cogo = targetEnt;
+                                    // Use the matrix to calculate new location (preserving Z if mat has Z-scale=1)
+                                    Point3d newLoc = ((Point3d)cogo.Location).TransformBy(mat);
+                                    cogo.Location = newLoc;
+                                    count++;
+                                    continue;
+                                }
+                                catch
+                                {
+                                    // Fallback to standard TransformBy if dynamic access fails
+                                }
+                            }
+
                             // Special handling for Line entities (slanted lines need both ends fixed)
                             if (targetEnt is Line line)
                             {
