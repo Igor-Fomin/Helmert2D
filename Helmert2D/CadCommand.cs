@@ -438,21 +438,35 @@ namespace Helmert2D
             if (pointIds == null || pointIds.Count == 0) return;
             try
             {
-                // db.UpdateExtents(); // Not available directly on Database
+                // 1. Move away and back (Force spatial index update)
+                // A zero-move might be optimized out, so we do a real tiny move to force the R-Tree to update.
+                var vecOffset = new Vector3d(0.001, 0.001, 0.001);
+                var vecBack = vecOffset.Negate();
+
                 using (Transaction tr = db.TransactionManager.StartTransaction())
                 {
-                    var vec0 = new Vector3d(0, 0, 0);
                     foreach (ObjectId id in pointIds)
                     {
                         if (id.IsValid && !id.IsErased)
                         {
                             var ent = tr.GetObject(id, OpenMode.ForWrite) as Autodesk.AutoCAD.DatabaseServices.Entity;
-                            ent?.TransformBy(Matrix3d.Displacement(vec0));
+                            if (ent != null)
+                            {
+                                // Move it slightly and move it back
+                                ent.TransformBy(Matrix3d.Displacement(vecOffset));
+                                ent.TransformBy(Matrix3d.Displacement(vecBack));
+                                ent.RecordGraphicsModified(true);
+                            }
                         }
                     }
                     tr.Commit();
                 }
-                ed.UpdateScreen();
+
+                // 2. Audit database to fix index issues (The programmatic equivalent of "Save/Open" check)
+                db.Audit(true, false);
+
+                // 3. Deep Regen
+                ed.Regen();
             }
             catch (System.Exception ex) { ed.WriteMessage($"\nSpatial Shake failed: {ex.Message}"); }
         }
