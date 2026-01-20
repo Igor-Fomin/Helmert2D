@@ -234,6 +234,9 @@ namespace Helmert2D
                                     // the selection area (spatial index) is updated immediately.
                                     cogo.Location = new Point3d(newX, newY, oldLoc.Z);
 
+                                    // Force graphics/selection update
+                                    targetEnt.RecordGraphicsModified(true);
+
                                     // Optional: If you also want to rotate the marker symbol
                                     // (Uncomment if needed, otherwise the marker stays upright)
                                     // cogo.Rotation -= result.RotationRad; 
@@ -360,22 +363,55 @@ namespace Helmert2D
                 {
                     foreach (ObjectId pgId in civilDoc.PointGroups)
                     {
-                        // Open for read first to check status
-                        var pg = tr.GetObject(pgId, OpenMode.ForRead) as PointGroup;
-                        if (pg != null && pg.IsOutOfDate)
-                        {
-                            // Upgrade to write only if needed to perform update
-                            pg.UpgradeOpen();
-                            pg.Update();
-                            // Optional: downgrade back if we were doing more reads, 
-                            // but here we just continue or commit.
-                            // pg.DowngradeOpen(); 
-                        }
+                        var pg = tr.GetObject(pgId, OpenMode.ForWrite) as PointGroup;
+                        pg?.Update();
                     }
                     tr.Commit();
                 }
 
-                // Execute a regen to flush graphics cache
+                // Programmatically "jiggle" the display order to force a full spatial index rebuild.
+                // We use dynamic to avoid compile-time issues with version-specific method names.
+                try
+                {
+                    dynamic pgColl = civilDoc.PointGroups;
+                    ObjectIdCollection currentOrder = pgColl.GetDisplayOrder();
+                    if (currentOrder != null && currentOrder.Count > 1)
+                    {
+                        ObjectId firstId = currentOrder[0];
+                        currentOrder.RemoveAt(0);
+                        currentOrder.Add(firstId);
+                        pgColl.SetDisplayOrder(currentOrder);
+
+                        // Swap back to preserve original order
+                        currentOrder.RemoveAt(currentOrder.Count - 1);
+                        currentOrder.Insert(0, firstId);
+                        pgColl.SetDisplayOrder(currentOrder);
+                    }
+                }
+                catch
+                {
+                    // Fallback to COM if .NET methods fail
+                    try
+                    {
+                        dynamic civilApp = Autodesk.AutoCAD.ApplicationServices.Application.AcadApplication;
+                        dynamic c3dDoc = civilApp.GetInterfaceObject("AeccXUiLand.AeccApplication.13.7").ActiveDocument;
+                        dynamic groups = c3dDoc.PointGroups;
+                        dynamic order = groups.DisplayOrder;
+                        if (order.Count > 1)
+                        {
+                            dynamic first = order.Item(0);
+                            order.Remove(0);
+                            order.Add(first);
+                            groups.DisplayOrder = order;
+                            
+                            order.Remove(order.Count - 1);
+                            order.Insert(0, first);
+                            groups.DisplayOrder = order;
+                        }
+                    }
+                    catch { /* Final fallback: ignore if both APIs fail */ }
+                }
+
                 ed.Regen();
             }
             catch (System.Exception ex)
