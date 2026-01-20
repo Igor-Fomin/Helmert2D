@@ -331,34 +331,38 @@ namespace Helmert2D
                 }
             }
 
-            // Update Civil 3D Point Groups in a separate transaction
-            // This ensures they see the committed changes from the transformation
-            using (Transaction tr2 = doc.TransactionManager.StartTransaction())
+            // ---------------------------------------------------------
+            // FORCE PROJECT-WIDE POINT UPDATE
+            // ---------------------------------------------------------
+            try
             {
-                try
+                // 1. Try via .NET API first (Cleaner)
+                var civilDoc = CivilApplication.ActiveDocument;
+                if (civilDoc != null)
                 {
-                    var civilDoc = CivilApplication.ActiveDocument;
-                    if (civilDoc != null)
+                    using (Transaction trUpdate = db.TransactionManager.StartTransaction())
                     {
                         foreach (ObjectId pgId in civilDoc.PointGroups)
                         {
-                            var pg = tr2.GetObject(pgId, OpenMode.ForRead) as PointGroup;
-                            if (pg != null)
-                            {
-                                // Force update even if not marked out of date, to ensure spatial index refresh
-                                pg.UpgradeOpen();
-                                pg.Update();
-                            }
+                            var pg = trUpdate.GetObject(pgId, OpenMode.ForWrite) as PointGroup;
+                            pg?.Update();
                         }
+                        trUpdate.Commit();
                     }
-                    tr2.Commit();
                 }
-                catch
-                {
-                    // Ignore if not in Civil 3D environment or other error
-                    tr2.Abort();
-                }
+
+                // 2. Fallback/Extra kick via COM (Force refresh "All Points" cache)
+                // This is often needed to fix selection area/spatial index issues in Civil 3D
+                dynamic civilApp = Autodesk.AutoCAD.ApplicationServices.Application.AcadApplication;
+                // Version 13.7 = Civil 3D 2025, 13.6 = 2024, etc.
+                dynamic c3dDoc = civilApp.GetInterfaceObject("AeccXUiLand.AeccApplication.13.7").ActiveDocument; 
+                c3dDoc.PointGroups.Update();
             }
+            catch 
+            { 
+                /* Ignore if Civil 3D API or specific COM version is not reachable */ 
+            }
+            // ---------------------------------------------------------
 
             ed.Regen();
             // We can't access 'count' easily here if we broke the scope, but we can reconstruct the message or just say "Done".
