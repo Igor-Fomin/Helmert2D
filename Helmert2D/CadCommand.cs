@@ -193,6 +193,7 @@ namespace Helmert2D
                     }
 
                     int count = 0;
+                    var modifiedPointIds = new List<ObjectId>();
                     foreach (SelectedObject so in pSelRes.Value)
                     {
                         Autodesk.AutoCAD.DatabaseServices.Entity? ent = tr.GetObject(so.ObjectId, OpenMode.ForRead) as Autodesk.AutoCAD.DatabaseServices.Entity;
@@ -224,22 +225,19 @@ namespace Helmert2D
                                     // Apply Helmert Transformation Math Manually:
                                     // x' = Tx + (Scale * cos * x) - (Scale * sin * y)
                                     // y' = Ty + (Scale * sin * x) + (Scale * cos * y)
-                                    // Note: result.A = Scale * cos(rot), result.B = Scale * sin(rot)
                                     
                                     double newX = result.TranslationX + result.A * oldLoc.X - result.B * oldLoc.Y;
                                     double newY = result.TranslationY + result.B * oldLoc.X + result.A * oldLoc.Y;
 
-                                    // Set Location directly. 
-                                    // This is the "Civil 3D safe" way to move points that ensures 
-                                    // the selection area (spatial index) is updated immediately.
                                     cogo.Location = new Point3d(newX, newY, oldLoc.Z);
 
-                                    // Optional: If you also want to rotate the marker symbol
-                                    // (Uncomment if needed, otherwise the marker stays upright)
-                                    // cogo.Rotation -= result.RotationRad; 
+                                    // Force graphics/selection update
+                                    targetEnt.RecordGraphicsModified(true);
+                                    
+                                    modifiedPointIds.Add(targetEnt.ObjectId);
 
                                     count++;
-                                    continue; // Skip the generic TransformBy logic below
+                                    continue; 
                                 }
                                 catch (System.Exception ex)
                                 {
@@ -322,6 +320,12 @@ namespace Helmert2D
                     }
 
                     tr.Commit();
+
+                    // Apply the "Nuclear Option" if points are stubborn
+                    if (modifiedPointIds.Count > 0)
+                    {
+                        SpatialShake(db, ed, modifiedPointIds);
+                    }
                 }
                 catch (System.Exception ex)
                 {
@@ -331,34 +335,8 @@ namespace Helmert2D
                 }
             }
 
-            // Update Civil 3D Point Groups in a separate transaction
-            // This ensures they see the committed changes from the transformation
-            using (Transaction tr2 = doc.TransactionManager.StartTransaction())
-            {
-                try
-                {
-                    var civilDoc = CivilApplication.ActiveDocument;
-                    if (civilDoc != null)
-                    {
-                        foreach (ObjectId pgId in civilDoc.PointGroups)
-                        {
-                            var pg = tr2.GetObject(pgId, OpenMode.ForRead) as PointGroup;
-                            if (pg != null)
-                            {
-                                // Force update even if not marked out of date, to ensure spatial index refresh
-                                pg.UpgradeOpen();
-                                pg.Update();
-                            }
-                        }
-                    }
-                    tr2.Commit();
-                }
-                catch
-                {
-                    // Ignore if not in Civil 3D environment or other error
-                    tr2.Abort();
-                }
-            }
+            // Standard refresh
+            RefreshPointGroups();
 
             ed.Regen();
             // We can't access 'count' easily here if we broke the scope, but we can reconstruct the message or just say "Done".
@@ -414,6 +392,69 @@ namespace Helmert2D
             }
 
             return null;
+        }
+
+        private void RefreshPointGroups()
+        {
+            var doc = Autodesk.AutoCAD.ApplicationServices.Application.DocumentManager.MdiActiveDocument;
+            if (doc == null) return;
+            var civilDoc = CivilApplication.ActiveDocument;
+            if (civilDoc == null) return;
+
+            using (Transaction tr = doc.Database.TransactionManager.StartTransaction())
+            {
+                foreach (ObjectId pgId in civilDoc.PointGroups)
+                {
+                    var pg = tr.GetObject(pgId, OpenMode.ForWrite) as PointGroup;
+                    pg?.Update();
+                }
+                tr.Commit();
+            }
+
+            // "Jiggle" display order to force spatial index rebuild
+            try
+            {
+                dynamic pgColl = civilDoc.PointGroups;
+                ObjectIdCollection currentOrder = pgColl.GetDisplayOrder();
+                if (currentOrder != null && currentOrder.Count > 1)
+                {
+                    ObjectId firstId = currentOrder[0];
+                    currentOrder.RemoveAt(0);
+                    currentOrder.Add(firstId);
+                    pgColl.SetDisplayOrder(currentOrder);
+
+                    currentOrder.RemoveAt(currentOrder.Count - 1);
+                    currentOrder.Insert(0, firstId);
+                    pgColl.SetDisplayOrder(currentOrder);
+                }
+            }
+            catch { /* Ignore */ }
+
+            doc.Editor.Regen();
+        }
+
+        private void SpatialShake(Database db, Editor ed, List<ObjectId> pointIds)
+        {
+            if (pointIds == null || pointIds.Count == 0) return;
+            try
+            {
+                // db.UpdateExtents(); // Not available directly on Database
+                using (Transaction tr = db.TransactionManager.StartTransaction())
+                {
+                    var vec0 = new Vector3d(0, 0, 0);
+                    foreach (ObjectId id in pointIds)
+                    {
+                        if (id.IsValid && !id.IsErased)
+                        {
+                            var ent = tr.GetObject(id, OpenMode.ForWrite) as Autodesk.AutoCAD.DatabaseServices.Entity;
+                            ent?.TransformBy(Matrix3d.Displacement(vec0));
+                        }
+                    }
+                    tr.Commit();
+                }
+                ed.UpdateScreen();
+            }
+            catch (System.Exception ex) { ed.WriteMessage($"\nSpatial Shake failed: {ex.Message}"); }
         }
     }
 }
