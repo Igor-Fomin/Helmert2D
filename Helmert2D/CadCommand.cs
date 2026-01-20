@@ -331,38 +331,8 @@ namespace Helmert2D
                 }
             }
 
-            // ---------------------------------------------------------
-            // FORCE PROJECT-WIDE POINT UPDATE
-            // ---------------------------------------------------------
-            try
-            {
-                // 1. Try via .NET API first (Cleaner)
-                var civilDoc = CivilApplication.ActiveDocument;
-                if (civilDoc != null)
-                {
-                    using (Transaction trUpdate = db.TransactionManager.StartTransaction())
-                    {
-                        foreach (ObjectId pgId in civilDoc.PointGroups)
-                        {
-                            var pg = trUpdate.GetObject(pgId, OpenMode.ForWrite) as PointGroup;
-                            pg?.Update();
-                        }
-                        trUpdate.Commit();
-                    }
-                }
-
-                // 2. Fallback/Extra kick via COM (Force refresh "All Points" cache)
-                // This is often needed to fix selection area/spatial index issues in Civil 3D
-                dynamic civilApp = Autodesk.AutoCAD.ApplicationServices.Application.AcadApplication;
-                // Version 13.7 = Civil 3D 2025, 13.6 = 2024, etc.
-                dynamic c3dDoc = civilApp.GetInterfaceObject("AeccXUiLand.AeccApplication.13.7").ActiveDocument; 
-                c3dDoc.PointGroups.Update();
-            }
-            catch 
-            { 
-                /* Ignore if Civil 3D API or specific COM version is not reachable */ 
-            }
-            // ---------------------------------------------------------
+            // Refresh Point Groups to fix spatial index/selection issues
+            RefreshPointGroups();
 
             ed.Regen();
             // We can't access 'count' easily here if we broke the scope, but we can reconstruct the message or just say "Done".
@@ -372,6 +342,46 @@ namespace Helmert2D
             ed.WriteMessage($"\nTransformation complete.\n");
 
             Autodesk.AutoCAD.Internal.Utils.SetFocusToDwgView();
+        }
+
+        private void RefreshPointGroups()
+        {
+            var doc = Autodesk.AutoCAD.ApplicationServices.Application.DocumentManager.MdiActiveDocument;
+            if (doc == null) return;
+            var ed = doc.Editor;
+            var db = doc.Database;
+
+            try
+            {
+                var civilDoc = CivilApplication.ActiveDocument;
+                if (civilDoc == null) return;
+
+                using (Transaction tr = db.TransactionManager.StartTransaction())
+                {
+                    foreach (ObjectId pgId in civilDoc.PointGroups)
+                    {
+                        // Open for read first to check status
+                        var pg = tr.GetObject(pgId, OpenMode.ForRead) as PointGroup;
+                        if (pg != null && pg.IsOutOfDate)
+                        {
+                            // Upgrade to write only if needed to perform update
+                            pg.UpgradeOpen();
+                            pg.Update();
+                            // Optional: downgrade back if we were doing more reads, 
+                            // but here we just continue or commit.
+                            // pg.DowngradeOpen(); 
+                        }
+                    }
+                    tr.Commit();
+                }
+
+                // Execute a regen to flush graphics cache
+                ed.Regen();
+            }
+            catch (System.Exception ex)
+            {
+                ed.WriteMessage($"\nError refreshing point groups: {ex.Message}");
+            }
         }
 
         private double? GetElevation(Autodesk.AutoCAD.DatabaseServices.Entity ent)
