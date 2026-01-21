@@ -179,75 +179,82 @@ namespace Helmert2D
             var matUniform = new Matrix3d(matDataUniform);
 
             using (doc.LockDocument())
-            using (Transaction tr = doc.TransactionManager.StartTransaction())
             {
+                int count = 0;
                 try
                 {
-                    BlockTableRecord? btr = null;
-                    if (transformCopy)
+                    using (Transaction tr = doc.TransactionManager.StartTransaction())
                     {
-                        BlockTable bt = (BlockTable)tr.GetObject(db.BlockTableId, OpenMode.ForRead);
-                        btr = (BlockTableRecord)tr.GetObject(db.CurrentSpaceId, OpenMode.ForWrite);
-                    }
-
-                    int count = 0;
-                    foreach (SelectedObject so in pSelRes.Value)
-                    {
-                        Entity? ent = tr.GetObject(so.ObjectId, OpenMode.ForRead) as Entity;
-                        if (ent != null)
+                        BlockTableRecord? btr = null;
+                        if (transformCopy)
                         {
-                            string typeName = ent.GetType().Name;
-                            bool isSurface = typeName.Contains("Surface") && !typeName.Contains("Label");
-                            
-                            // Civil 3D entities (CogoPoints, Alignments, etc.) should generally NOT be cloned via standard CAD cloning
-                            // as this creates ID conflicts or duplicates that don't behave correctly. 
-                            bool isCivilEntity = typeName.Contains("CogoPoint") || 
-                                                 typeName.Contains("Alignment") || 
-                                                 typeName.Contains("FeatureLine") ||
-                                                 typeName.Contains("Corridor") ||
-                                                 typeName.Contains("Pipe") ||
-                                                 typeName.Contains("Structure");
+                            BlockTable bt = (BlockTable)tr.GetObject(db.BlockTableId, OpenMode.ForRead);
+                            btr = (BlockTableRecord)tr.GetObject(db.CurrentSpaceId, OpenMode.ForWrite);
+                        }
 
-                            // Avoid cloning Surfaces (DTM) or complex Civil objects that shouldn't be duplicated
-                            // If it's a Civil Entity, we force MOVE (shouldCopy = false)
-                            bool shouldCopy = transformCopy && btr != null && !isSurface && !isCivilEntity;
+                        foreach (SelectedObject so in pSelRes.Value)
+                        {
+                            Entity? ent = tr.GetObject(so.ObjectId, OpenMode.ForRead) as Entity;
+                            if (ent != null)
+                            {
+                                string typeName = ent.GetType().Name;
+                                bool isSurface = typeName.Contains("Surface") && !typeName.Contains("Label");
+                                
+                                // Civil 3D entities (CogoPoints, Alignments, etc.) should generally NOT be cloned via standard CAD cloning
+                                // as this creates ID conflicts or duplicates that don't behave correctly. 
+                                bool isCivilEntity = typeName.Contains("CogoPoint") || 
+                                                     typeName.Contains("Alignment") || 
+                                                     typeName.Contains("FeatureLine") || 
+                                                     typeName.Contains("Corridor") || 
+                                                     typeName.Contains("Pipe") || 
+                                                     typeName.Contains("Structure");
 
-                            Entity targetEnt;
-                            if (shouldCopy)
-                            {
-                                targetEnt = (Entity)ent.Clone();
-                                btr!.AppendEntity(targetEnt);
-                                tr.AddNewlyCreatedDBObject(targetEnt, true);
-                            }
-                            else
-                            {
-                                targetEnt = ent;
-                                targetEnt.UpgradeOpen();
-                            }
+                                // Avoid cloning Surfaces (DTM) or complex Civil objects that shouldn't be duplicated
+                                // If it's a Civil Entity, we force MOVE (shouldCopy = false)
+                                bool shouldCopy = transformCopy && btr != null && !isSurface && !isCivilEntity;
 
-                            // Special handling for CogoPoint (Civil 3D) to prevent selection issues
-                            if (typeName == "CogoPoint")
-                            {
-                                try
+                                Entity targetEnt;
+                                if (shouldCopy)
                                 {
-                                    dynamic cogo = targetEnt;
-                                    // Use the matrix to calculate new location (preserving Z if mat has Z-scale=1)
-                                    Point3d newLoc = ((Point3d)cogo.Location).TransformBy(mat);
-                                    cogo.Location = newLoc;
+                                    targetEnt = (Entity)ent.Clone();
+                                    btr!.AppendEntity(targetEnt);
+                                    tr.AddNewlyCreatedDBObject(targetEnt, true);
+                                }
+                                else
+                                {
+                                    targetEnt = ent;
+                                    targetEnt.UpgradeOpen();
+                                }
+
+                                // Special handling for Line entities (slanted lines need both ends fixed)
+                                if (targetEnt is Line line)
+                                {
+                                    double oldStartZ = line.StartPoint.Z;
+                                    double oldEndZ = line.EndPoint.Z;
+
+                                    try
+                                    {
+                                        targetEnt.TransformBy(mat);
+                                    }
+                                    catch (Autodesk.AutoCAD.Runtime.Exception ex)
+                                    {
+                                        if (ex.ErrorStatus == ErrorStatus.CannotScaleNonUniformly)
+                                            targetEnt.TransformBy(matUniform);
+                                        else if (ex.ErrorStatus == ErrorStatus.NotApplicable)
+                                        { /* Ignore labels/entities that refuse transform */ }
+                                        else throw;
+                                    }
+
+                                    // Explicitly restore Z for both ends to preserve slope/elevation
+                                    line.StartPoint = new Point3d(line.StartPoint.X, line.StartPoint.Y, oldStartZ);
+                                    line.EndPoint = new Point3d(line.EndPoint.X, line.EndPoint.Y, oldEndZ);
+
                                     count++;
-                                    continue;
+                                    continue; // Skip generic correction
                                 }
-                                catch
-                                {
-                                    // Fallback to standard TransformBy if dynamic access fails
-                                }
-                            }
 
-                            // Special handling for Line entities (slanted lines need both ends fixed)
-                            if (targetEnt is Line line)
-                            {
-                                double oldStartZ = line.StartPoint.Z;
-                                double oldEndZ = line.EndPoint.Z;
+                                // Capture original Z for point-based objects
+                                double? originalZ = GetElevation(targetEnt);
 
                                 try
                                 {
@@ -256,73 +263,73 @@ namespace Helmert2D
                                 catch (Autodesk.AutoCAD.Runtime.Exception ex)
                                 {
                                     if (ex.ErrorStatus == ErrorStatus.CannotScaleNonUniformly)
+                                    {
+                                        // Fallback to uniform scaling if non-uniform is not supported
                                         targetEnt.TransformBy(matUniform);
+                                    }
                                     else if (ex.ErrorStatus == ErrorStatus.NotApplicable)
-                                    { /* Ignore labels/entities that refuse transform */ }
-                                    else throw;
+                                    {
+                                        // Ignore entities that refuse transformation (e.g., dynamic labels tied to parent)
+                                        // Do not increment count if we didn't do anything? Or count it as handled?
+                                        // Let's count it as processed to avoid confusion.
+                                    }
+                                    else
+                                    {
+                                        throw;
+                                    }
                                 }
 
-                                // Explicitly restore Z for both ends to preserve slope/elevation
-                                line.StartPoint = new Point3d(line.StartPoint.X, line.StartPoint.Y, oldStartZ);
-                                line.EndPoint = new Point3d(line.EndPoint.X, line.EndPoint.Y, oldEndZ);
+                                // Restore Z if it drifted (Capture-Transform-Restore)
+                                if (originalZ.HasValue)
+                                {
+                                    double? newZ = GetElevation(targetEnt);
+                                    if (newZ.HasValue && Math.Abs(newZ.Value - originalZ.Value) > 1e-6)
+                                    {
+                                        var correction = Matrix3d.Displacement(new Vector3d(0, 0, originalZ.Value - newZ.Value));
+                                        try 
+                                        {
+                                            targetEnt.TransformBy(correction);
+                                        } 
+                                        catch (Autodesk.AutoCAD.Runtime.Exception ex) when (ex.ErrorStatus == ErrorStatus.NotApplicable) 
+                                        { /* Ignore */ }
+                                    }
+                                }
 
                                 count++;
-                                continue; // Skip generic correction
                             }
+                        }
+                        tr.Commit();
+                    }
 
-                            // Capture original Z for point-based objects
-                            double? originalZ = GetElevation(targetEnt);
-
-                            try
+                    // Secondary transaction to update Civil 3D Point Groups (Fix for spatial index/ghosting)
+                    try
+                    {
+                        using (Transaction tr2 = doc.TransactionManager.StartTransaction())
+                        {
+                            // Resolve CivilDocument dynamically or via reference to support Civil 3D environment
+                            var civilDoc = Autodesk.Civil.ApplicationServices.CivilDocument.GetCivilDocument(db);
+                            var allPointsId = civilDoc.PointGroups.AllPointsPointGroupId;
+                            var allPointsGroup = tr2.GetObject(allPointsId, OpenMode.ForWrite) as Autodesk.Civil.DatabaseServices.PointGroup;
+                            
+                            if (allPointsGroup != null)
                             {
-                                targetEnt.TransformBy(mat);
+                                allPointsGroup.Update();
                             }
-                            catch (Autodesk.AutoCAD.Runtime.Exception ex)
-                            {
-                                if (ex.ErrorStatus == ErrorStatus.CannotScaleNonUniformly)
-                                {
-                                    // Fallback to uniform scaling if non-uniform is not supported
-                                    targetEnt.TransformBy(matUniform);
-                                }
-                                else if (ex.ErrorStatus == ErrorStatus.NotApplicable)
-                                {
-                                    // Ignore entities that refuse transformation (e.g., dynamic labels tied to parent)
-                                    // Do not increment count if we didn't do anything? Or count it as handled?
-                                    // Let's count it as processed to avoid confusion.
-                                }
-                                else
-                                {
-                                    throw;
-                                }
-                            }
-
-                            // Restore Z if it drifted (Capture-Transform-Restore)
-                            if (originalZ.HasValue)
-                            {
-                                double? newZ = GetElevation(targetEnt);
-                                if (newZ.HasValue && Math.Abs(newZ.Value - originalZ.Value) > 1e-6)
-                                {
-                                    var correction = Matrix3d.Displacement(new Vector3d(0, 0, originalZ.Value - newZ.Value));
-                                    try 
-                                    {
-                                        targetEnt.TransformBy(correction);
-                                    } 
-                                    catch (Autodesk.AutoCAD.Runtime.Exception ex) when (ex.ErrorStatus == ErrorStatus.NotApplicable) 
-                                    { /* Ignore */ }
-                                }
-                            }
-
-                            count++;
+                            tr2.Commit();
                         }
                     }
-                    tr.Commit();
+                    catch
+                    {
+                        // Ignore if not running in Civil 3D or if Civil entities were not involved
+                    }
+
                     ed.Regen();
                     ed.WriteMessage($"\nSuccessfully transformed {count} objects" + (transformCopy ? " (Copies created)." : ".") + "\n");
                 }
                 catch (System.Exception ex)
                 {
                     ed.WriteMessage($"\nError during transformation: {ex.Message}\n");
-                    tr.Abort();
+                    // Transaction is implicitly aborted if not committed when disposed
                 }
             }
 
