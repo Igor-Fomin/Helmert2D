@@ -306,21 +306,46 @@ namespace Helmert2D
                     {
                         using (Transaction tr2 = doc.TransactionManager.StartTransaction())
                         {
-                            // Resolve CivilDocument dynamically or via reference to support Civil 3D environment
-                            var civilDoc = Autodesk.Civil.ApplicationServices.CivilDocument.GetCivilDocument(db);
-                            var allPointsId = civilDoc.PointGroups.AllPointsPointGroupId;
-                            var allPointsGroup = tr2.GetObject(allPointsId, OpenMode.ForWrite) as Autodesk.Civil.DatabaseServices.PointGroup;
-                            
-                            if (allPointsGroup != null)
+                            // 1. Force spatial index update for individual CogoPoints
+                            foreach (SelectedObject so in pSelRes.Value)
                             {
-                                allPointsGroup.Update();
+                                try
+                                {
+                                    if (so.ObjectId.ObjectClass.Name.Contains("CogoPoint"))
+                                    {
+                                        var obj = tr2.GetObject(so.ObjectId, OpenMode.ForWrite);
+                                        if (obj is Autodesk.Civil.DatabaseServices.CogoPoint cogo)
+                                        {
+                                            // "Jiggle" the point to force a spatial index update (simple assignment is often optimized out)
+                                            double originalEasting = cogo.Easting;
+                                            cogo.Easting = originalEasting + 0.0001;
+                                            cogo.Easting = originalEasting;
+                                        }
+                                    }
+                                }
+                                catch { /* Ignore individual failures */ }
                             }
+
+                            // 2. Update ALL Point Groups
+                            var civilDoc = Autodesk.Civil.ApplicationServices.CivilDocument.GetCivilDocument(db);
+                            foreach (ObjectId pgId in civilDoc.PointGroups)
+                            {
+                                try
+                                {
+                                    var pg = tr2.GetObject(pgId, OpenMode.ForWrite) as Autodesk.Civil.DatabaseServices.PointGroup;
+                                    pg?.Update();
+                                }
+                                catch { /* specific group update failure */ }
+                            }
+                            
                             tr2.Commit();
+                            ed.WriteMessage("\nCivil 3D Point Groups updated.\n");
                         }
                     }
-                    catch
+                    catch (System.Exception ex)
                     {
-                        // Ignore if not running in Civil 3D or if Civil entities were not involved
+                        // Log warning but don't fail the command
+                        ed.WriteMessage($"\nWarning: Could not update Civil 3D Point Groups: {ex.Message}\n");
                     }
 
                     ed.Regen();
